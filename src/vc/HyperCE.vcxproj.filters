@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\main.cc">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ui.cc">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{6a1b1562-df32-42bb-b0e3-9998daa86e98}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="rc">
+      <UniqueIdentifier>{868420a0-7b36-417b-9d32-0c9f64561e33}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h">
+      <Filter>rc</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="HyperCE.rc">
+      <Filter>rc</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md">
+      <Filter>rc</Filter>
+    </None>
+  </ItemGroup>
+</Project>
