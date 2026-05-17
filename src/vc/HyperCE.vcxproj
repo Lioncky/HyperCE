@@ -135,8 +135,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithFlag|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir).vs\</OutDir>
-    <IntDir>$(SolutionDir).vs\Obj\</IntDir>
+    <OutDir>.vs\</OutDir>
+    <IntDir>.vs\Obj\</IntDir>
     <TargetName>$(ProjectName)</TargetName>
     <IncludePath>$(KsaLib);$(IncludePath)</IncludePath>
     <LibraryPath>$(KsaLib);$(LibraryPath)</LibraryPath>
@@ -327,8 +327,9 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
     <PostBuildEvent>
-      <Command>
-      </Command>
+      <Command>copy $(TargetPath) E:\
+copy $(TargetPath) V:\
+</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithFlag|Win32'">
@@ -373,8 +374,10 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\drv.cc" />
     <ClCompile Include="..\main.cc" />
     <ClCompile Include="..\ui.cc" />
+    <ClCompile Include="..\ui\vw_mem.cc" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />

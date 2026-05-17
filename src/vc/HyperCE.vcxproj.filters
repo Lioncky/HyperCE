@@ -7,6 +7,12 @@
     <ClCompile Include="..\ui.cc">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\drv.cc">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ui\vw_mem.cc">
+      <Filter>ui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="src">
@@ -14,6 +20,9 @@
     </Filter>
     <Filter Include="rc">
       <UniqueIdentifier>{868420a0-7b36-417b-9d32-0c9f64561e33}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ui">
+      <UniqueIdentifier>{b49dda07-7f11-4d5e-9f64-ac2cc1992f8e}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

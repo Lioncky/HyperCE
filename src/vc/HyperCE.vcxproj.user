@@ -36,6 +36,17 @@
     <DebuggerFlavor>WindowsRemoteDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
     <LocalDebuggerCommandArguments>cat PNt_x64.exe_dep.txt</LocalDebuggerCommandArguments>
+    <RemoteDebuggerCommand>E:\$(TargetFileName)</RemoteDebuggerCommand>
+    <RemoteDebuggerCommandArguments>
+    </RemoteDebuggerCommandArguments>
+    <RemoteDebuggerServerName>10.0.0.8</RemoteDebuggerServerName>
+    <RemoteDebuggerWorkingDirectory>C:\Users\Administrator\Desktop\hddx</RemoteDebuggerWorkingDirectory>
+    <RemoteDebuggerConnection>RemoteWithoutAuthentication</RemoteDebuggerConnection>
+    <DeploymentDirectory>C:\Users\Administrator\Desktop\hddx</DeploymentDirectory>
+    <AdditionalFiles>
+    </AdditionalFiles>
+    <RemoteDebuggerEnvironment>
+    </RemoteDebuggerEnvironment>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithFlag|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>

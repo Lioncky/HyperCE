@@ -4,9 +4,9 @@
 void ShowTrayMenu(HWND hwnd)
 {
 	HMENU hMenu = CreatePopupMenu();
-	AppendMenu(hMenu, MF_STRING | (G->bOption1 ?MF_CHECKED : MF_UNCHECKED), ID_MENU_CK1, L"主页"); // 默认勾选
+	//AppendMenu(hMenu, MF_STRING | (G->bOption1 ?MF_CHECKED : MF_UNCHECKED), ID_MENU_CK1, L"主页"); // 默认勾选
 	AppendMenu(hMenu, MF_STRING | (G->bShowConsle ? MF_CHECKED : MF_UNCHECKED), ID_MENU_CK2, L"命令"); // 默认未勾选
-	AppendMenu(hMenu, MF_STRING, ID_MENU_HELLO, L"信息");
+	//AppendMenu(hMenu, MF_STRING, ID_MENU_HELLO, L"信息");
 	AppendMenu(hMenu, MF_STRING, ID_MENU_CANCEL, L"取消");
 	AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
 	AppendMenu(hMenu, MF_STRING, ID_MENU_EXIT, L"退出");
@@ -18,13 +18,10 @@ void ShowTrayMenu(HWND hwnd)
 
 int xTray(PVOID)
 {
+	
 	HWND hwnd = Nt::CurrentConsole();
 	if (hwnd) 
 		Nt::RemoveWndStyle(hwnd, WS_SYSMENU);
-
-	BOOL AppsUseLightTheme = Nt::RegistryAppsUseLightTheme();
-	if (AppsUseLightTheme == FALSE)
-		Nt::UxSetDarkModeBrush(::CreateSolidBrush(RGB(32, 32, 32)));
 
 	hwnd = Nt::CreateWnd(TRAY_CAPTION, TRAY_CAPTION,
 	+[](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -74,27 +71,20 @@ int xTray(PVOID)
 			Nt::DragFinish((HGLOBAL)wParam);
 			return 0ll;
 		}
-		else if (msg == WM_LBUTTONUP)
+		else if (G->bCapting && msg == WM_LBUTTONUP)
 		{
+			G->bCapting = FALSE;
 
-			if (G->bCapting)// && ::GetCapture() == hwnd)
-			{
-				G->bCapting = FALSE;
+			::ReleaseCapture();
 
-				::ReleaseCapture();
+			Nt::GetCursorPosU32(&G->pt);
 
-				Nt::GetCursorPosU32(&G->pt);
+			G->targetId = Nt::WndToPid(Nt::PosToWnd(&G->pt));
 
-				G->targetId = Nt::WndToPid(Nt::PosToWnd(&G->pt));
+			Nt::QueryProcessPath((HANDLE)G->targetId, nt::tmp(), 222);
 
-				Nt::QueryProcessPath((HANDLE)G->targetId, nt::tmp(), 222);
-
-				nt::lg("%d: %s", G->targetId, nt::tmp());
-				//DbgPrint("%s mouse released", nt::ltime());
-
-			}
-			else
-				goto _DEF;
+			nt::lg("%d: %s", G->targetId, nt::tmp());
+			//DbgPrint("%s mouse released", nt::ltime());
 		}
 		else if (msg == WM_NCLBUTTONDOWN) {
 
@@ -164,7 +154,7 @@ int xTray(PVOID)
 	});
 
 	#if 1
-	if (AppsUseLightTheme == FALSE)
+	if (nt::darkmode())
 		Nt::EnableDarkModeDwm(hwnd);
 	
 	HANDLE hIco = Nt::LoadIconW(NtCurrentImageBase(), MAKEINTRESOURCEW(1));
@@ -178,7 +168,7 @@ int xTray(PVOID)
 
 	int x = (screenWidth - WND_W) >> 1;
 	int y = (screenHeight - WND_H) >> 1;
-	Nt::SetWindowPosU32(hwnd, HWND_TOPMOST, x, y, WND_W, WND_H, SWP_HIDEWINDOW);
+	Nt::SetWindowPosU32(hwnd, HWND_TOP, x, y, WND_W, WND_H, SWP_HIDEWINDOW);
 
 	Nt::AddTary(hwnd, *(DWORD*)&hIco | 0x80000000, WM_TRAYICON, TRAY_CAPTION);
 

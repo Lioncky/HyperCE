@@ -2,8 +2,7 @@
 # define _HYPERCE_ID_
 # define TRAY_VERSION L"v1" //  [5/15/2026]
 # define TRAY_CAPTION L"HyperCE"
-# define WM_TRAYICON (/*WM_USER*/0x400 + 1)
-
+# define MMVIEW_CAPTION L"MmView"
 # define FONT_HEIGHT 36
 
 # define WND_W 760
@@ -16,4 +15,5 @@
 # define ID_MENU_CK1 2011
 # define ID_MENU_CK2 2012
 
+# define WM_TRAYICON (/*WM_USER*/0x400 + 1)
 #endif // 
