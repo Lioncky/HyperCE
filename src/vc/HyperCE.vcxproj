@@ -327,8 +327,7 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
     <PostBuildEvent>
-      <Command>copy $(TargetPath) E:\
-copy $(TargetPath) V:\
+      <Command>::copy $(TargetPath) E:\
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>

@@ -13,20 +13,34 @@
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <DebuggerFlavor>WindowsRemoteDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
     <LocalDebuggerCommandArguments>
     </LocalDebuggerCommandArguments>
+    <RemoteDebuggerCommand>C:\HyperCE\$(TargetFileName)</RemoteDebuggerCommand>
+    <RemoteDebuggerWorkingDirectory>C:\HyperCE</RemoteDebuggerWorkingDirectory>
+    <RemoteDebuggerServerName>10.0.0.8</RemoteDebuggerServerName>
+    <RemoteDebuggerConnection>RemoteWithoutAuthentication</RemoteDebuggerConnection>
+    <DeploymentDirectory>C:\HyperCE</DeploymentDirectory>
+    <RemoteDebuggerDeployDebugCppRuntime>false</RemoteDebuggerDeployDebugCppRuntime>
+    <AdditionalFiles>
+    </AdditionalFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <DebuggerFlavor>WindowsRemoteDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
     <LocalDebuggerCommandArguments>
     </LocalDebuggerCommandArguments>
+    <RemoteDebuggerCommand>C:\HyperCE\$(TargetFileName)</RemoteDebuggerCommand>
+    <RemoteDebuggerWorkingDirectory>C:\HyperCE</RemoteDebuggerWorkingDirectory>
+    <RemoteDebuggerServerName>10.0.0.8</RemoteDebuggerServerName>
+    <RemoteDebuggerConnection>RemoteWithoutAuthentication</RemoteDebuggerConnection>
+    <DeploymentDirectory>C:\HyperCE</DeploymentDirectory>
+    <RemoteDebuggerDeployCppRuntime>false</RemoteDebuggerDeployCppRuntime>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
@@ -36,17 +50,19 @@
     <DebuggerFlavor>WindowsRemoteDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
     <LocalDebuggerCommandArguments>cat PNt_x64.exe_dep.txt</LocalDebuggerCommandArguments>
-    <RemoteDebuggerCommand>E:\$(TargetFileName)</RemoteDebuggerCommand>
+    <RemoteDebuggerCommand>C:\HyperCE\$(TargetFileName)</RemoteDebuggerCommand>
     <RemoteDebuggerCommandArguments>
     </RemoteDebuggerCommandArguments>
     <RemoteDebuggerServerName>10.0.0.8</RemoteDebuggerServerName>
-    <RemoteDebuggerWorkingDirectory>C:\Users\Administrator\Desktop\hddx</RemoteDebuggerWorkingDirectory>
+    <RemoteDebuggerWorkingDirectory>C:\HyperCE</RemoteDebuggerWorkingDirectory>
     <RemoteDebuggerConnection>RemoteWithoutAuthentication</RemoteDebuggerConnection>
-    <DeploymentDirectory>C:\Users\Administrator\Desktop\hddx</DeploymentDirectory>
+    <DeploymentDirectory>C:\HyperCE</DeploymentDirectory>
     <AdditionalFiles>
     </AdditionalFiles>
     <RemoteDebuggerEnvironment>
     </RemoteDebuggerEnvironment>
+    <RemoteDebuggerDeployCppRuntime>false</RemoteDebuggerDeployCppRuntime>
+    <RemoteDebuggerDeployDebugCppRuntime>false</RemoteDebuggerDeployDebugCppRuntime>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithFlag|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
