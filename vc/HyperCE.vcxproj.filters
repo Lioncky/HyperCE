@@ -1,16 +1,22 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="..\main.cc">
+    <ClCompile Include="..\src\drv.cc">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\ui.cc">
+    <ClCompile Include="..\src\main.cc">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\drv.cc">
-      <Filter>src</Filter>
+    <ClCompile Include="..\src\test\test.cc">
+      <Filter>test</Filter>
     </ClCompile>
-    <ClCompile Include="..\ui\vw_mem.cc">
+    <ClCompile Include="..\src\test\is_vm_exist.cc">
+      <Filter>test</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ui\ui.cc">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ui\vw_mem.cc">
       <Filter>ui</Filter>
     </ClCompile>
   </ItemGroup>
@@ -23,6 +29,9 @@
     </Filter>
     <Filter Include="ui">
       <UniqueIdentifier>{b49dda07-7f11-4d5e-9f64-ac2cc1992f8e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="test">
+      <UniqueIdentifier>{dd702dbc-17ca-4de9-a564-cb94ac8a673a}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -39,5 +48,10 @@
     <None Include="..\..\README.md">
       <Filter>rc</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="..\src\test\vm.asm">
+      <Filter>test</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

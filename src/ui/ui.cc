@@ -1,25 +1,19 @@
 ﻿#include "hyperce.h"
 #include <Windows.h>
+#include <CommCtrl.h>
+VOID ui_MainInit();
+VOID ui_ShowTrayMenu(HWND);
+VOID ui_on_create(HWND hWnd) {
+	DAS("!ui_on_create");
 
-void ShowTrayMenu(HWND hwnd)
-{
-	HMENU hMenu = CreatePopupMenu();
-	//AppendMenu(hMenu, MF_STRING | (G->bOption1 ?MF_CHECKED : MF_UNCHECKED), ID_MENU_CK1, L"主页"); // 默认勾选
-	AppendMenu(hMenu, MF_STRING | (G->bShowConsle ? MF_CHECKED : MF_UNCHECKED), ID_MENU_CK2, L"命令"); // 默认未勾选
-	//AppendMenu(hMenu, MF_STRING, ID_MENU_HELLO, L"信息");
-	AppendMenu(hMenu, MF_STRING, ID_MENU_CANCEL, L"取消");
-	AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
-	AppendMenu(hMenu, MF_STRING, ID_MENU_EXIT, L"退出");
-
-	// SetForegroundWindow(hwnd); // 必须调用，否则菜单可能不消失
-	TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, G->pt.x, G->pt.y, 0, hwnd, nullptr);
-	DestroyMenu(hMenu);
 }
 
-int xTray(PVOID)
+VOID UI_MainWnd()
 {
-	
-	HWND hwnd = Nt::CurrentConsole();
+	HWND hwnd;
+	ui_MainInit();
+
+	hwnd = Nt::CurrentConsole();
 	if (hwnd) 
 		Nt::RemoveWndStyle(hwnd, WS_SYSMENU);
 
@@ -45,7 +39,7 @@ int xTray(PVOID)
 			// Open Context Menu
 			if (LOWORD(lParam) == WM_RBUTTONDOWN) {
 				Nt::GetCursorPosU32(&G->pt); // 
-				ShowTrayMenu(hwnd);
+				ui_ShowTrayMenu(hwnd);
 			}
 
 		}
@@ -76,12 +70,13 @@ int xTray(PVOID)
 			G->bCapting = FALSE;
 
 			::ReleaseCapture();
+			::SetCursor((HCURSOR)G->bakcur);
 
 			Nt::GetCursorPosU32(&G->pt);
 
 			G->targetId = Nt::WndToPid(Nt::PosToWnd(&G->pt));
 
-			Nt::QueryProcessPath((HANDLE)G->targetId, nt::tmp(), 222);
+			Nt::QueryProcessPath((HANDLE)G->targetId, nt::tmp(), 256);
 
 			nt::lg("%d: %s", G->targetId, nt::tmp());
 			//DbgPrint("%s mouse released", nt::ltime());
@@ -101,13 +96,8 @@ int xTray(PVOID)
 			{
 				::SetCapture(hwnd);
 				G->bCapting = TRUE;
-
-				if (!G->cursor) {
-					//G->cursora = (LoadCursorW(0, IDC_ARROW));
-					G->cursor = ::LoadCursorW(NtCurrentImageBase(), (PWSTR)(11));
-				}
-
-				::SetCursor((HCURSOR)G->cursor);
+				
+				G->bakcur = ::SetCursor((HCURSOR)G->cursor);
 			}
 			else 
 				goto _DEF;
@@ -133,7 +123,7 @@ int xTray(PVOID)
 				break;
 			case ID_MENU_CK1:
 				G->bOption1 ^= 1;
-				ShowTrayMenu(hwnd);
+				ui_ShowTrayMenu(hwnd);
 				break;
 
 			case ID_MENU_CK2:
@@ -142,10 +132,14 @@ int xTray(PVOID)
 					Nt::ShowConsole(TRUE);
 				else 
 					Nt::ShowConsole(FALSE);
-				ShowTrayMenu(hwnd);
+				ui_ShowTrayMenu(hwnd);
 				break;
 			}
 		}
+		else if (msg == WM_CREATE) {
+			ui_on_create(hwnd);
+		}
+
 		else 
 		_DEF:
 			return ::DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -153,62 +147,57 @@ int xTray(PVOID)
 		return 0ll;
 	});
 
-	#if 1
 	if (nt::darkmode())
 		Nt::EnableDarkModeDwm(hwnd);
 	
-	HANDLE hIco = Nt::LoadIconW(NtCurrentImageBase(), MAKEINTRESOURCEW(1));
 	Nt::AddWndStyle(hwnd, WS_SYSMENU);
 	Nt::AddWndExStyle(hwnd, WS_EX_ACCEPTFILES);
-	Nt::AddWndIcon(hwnd, hIco);
-	G->exeIcon = hIco;
+	Nt::AddWndIcon(hwnd, G->exeIcon);
 
 	int screenWidth = ::GetSystemMetrics(SM_CXSCREEN); // 
 	int screenHeight = ::GetSystemMetrics(SM_CYSCREEN); // 
 
 	int x = (screenWidth - WND_W) >> 1;
 	int y = (screenHeight - WND_H) >> 1;
-	Nt::SetWindowPosU32(hwnd, HWND_TOP, x, y, WND_W, WND_H, SWP_HIDEWINDOW);
+	Nt::SetWindowPosU32(hwnd, HWND_TOP, x, y, WND_W, WND_H, SWP_SHOWWINDOW);
 
-	Nt::AddTary(hwnd, *(DWORD*)&hIco | 0x80000000, WM_TRAYICON, TRAY_CAPTION);
+	//Nt::AddTary(hwnd, *(DWORD*)&hIco | 0x80000000, WM_TRAYICON, TRAY_CAPTION);
 
 	MSG msg;
-	while (GetMessageW(&msg, nullptr, 0, 0))
+	while (::GetMessageW(&msg, nullptr, 0, 0))
 	{
-		TranslateMessage(&msg);
-		DispatchMessageW(&msg);
+		::TranslateMessage(&msg);
+		::DispatchMessageW(&msg);
 		ntsleep(10);
 	}
 
-	// 清理图标
-	//if (nid.hIcon) DestroyIcon(nid.hIcon);
-
-	x = 10, y = 2;                   // 距左边 10 像素
-	HWND hWnd = G->Shell_TrayWnd ? G->Shell_TrayWnd : G->NotifyIconOverflowWindow;
-	RECT rect = { x, y, x + 1200, y + 200 };
-	InvalidateRect(hWnd, &rect, TRUE);
-	UpdateWindow(hWnd);
-	nt::ntTerminateProcess(HPROC, 0);
-	return 0;
 }
 
-//Nt::UxSetWindowTheme(hwnd, L"DarkMode_Explorer", NULL); // 主窗口
-//Nt::UxAllowDarkModeForWindow(hwnd, TRUE);
-//Nt::ThemeChangedWnd(hwnd);
-#else	
-	HMODULE hUthTheme = nt::load("uxtheme");
-	void(*fnSetWindowTheme)(HWND, LPCWSTR, HANDLE);
-	bool(*fnShouldAppsUseDarkMode)(); // 132
-	void(*fnAllowDarkModeForWindow)(HWND, BOOL); // 133
-	void(*fnSetPreferredAppMode)(BOOL); // 135
-	*(PVOID*)&fnSetWindowTheme = nt::func(hUthTheme, "SetWindowTheme");
-	*(PVOID*)&fnShouldAppsUseDarkMode = nt::func(hUthTheme, (PSTR)132);
-	*(PVOID*)&fnAllowDarkModeForWindow = nt::func(hUthTheme, (PSTR)133);
-	*(PVOID*)&fnSetPreferredAppMode = nt::func(hUthTheme, (PSTR)135);
+VOID ui_MainInit() {
 
-	fnShouldAppsUseDarkMode();
-	fnSetPreferredAppMode(2); // PreferredAppMode::AllowDark ForceDark = 2
-	fnSetWindowTheme(hwnd, L"DarkMode_Explorer", NULL); // 主窗口
-	fnAllowDarkModeForWindow(hwnd, TRUE);
-	Nt::ThemeChangedWnd(hwnd);
-#endif
+	// Very Thanks to ResourceHacker
+	// https://docwiki.embarcadero.com/Libraries/Alexandria/en/Vcl.Controls.TCursor?v=23.1
+	if (!G->exeIcon) {
+		G->exeIcon = ::LoadIconW(NtCurrentImageBase(), MAKEINTRESOURCEW(1));
+		G->cursor = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(5));
+		G->crSizeAll = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(22));
+		G->crHSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(14));
+		G->crVSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(15));
+		G->crDefault = ::LoadCursorW(NULL, IDC_ARROW);
+	}
+}
+
+void ui_ShowTrayMenu(HWND hwnd)
+{
+	HMENU hMenu = CreatePopupMenu();
+	//AppendMenu(hMenu, MF_STRING | (G->bOption1 ?MF_CHECKED : MF_UNCHECKED), ID_MENU_CK1, L"主页"); // 默认勾选
+	AppendMenu(hMenu, MF_STRING | (G->bShowConsle ? MF_CHECKED : MF_UNCHECKED), ID_MENU_CK2, L"命令"); // 默认未勾选
+	//AppendMenu(hMenu, MF_STRING, ID_MENU_HELLO, L"信息");
+	AppendMenu(hMenu, MF_STRING, ID_MENU_CANCEL, L"取消");
+	AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+	AppendMenu(hMenu, MF_STRING, ID_MENU_EXIT, L"退出");
+
+	// SetForegroundWindow(hwnd); // 必须调用，否则菜单可能不消失
+	TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, G->pt.x, G->pt.y, 0, hwnd, nullptr);
+	DestroyMenu(hMenu);
+}

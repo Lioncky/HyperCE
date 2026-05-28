@@ -6,19 +6,24 @@
 
 struct HYPER_CE
 {
-	HYPER_CALLER door;
-	BYTE _buffer[0x1000 - 4];
-	BYTE _1000[0x1000];
+	union {
+		struct {
+			HYPER_CALLER door;
+			bool bOption1, bShowConsle, bMainWnd, bCapting;
+			DWORD targetId; POINT pt;
+			HANDLE exeIcon, cursor, bakcur;
+			HANDLE crHSplit, crVSplit, crSizeAll, crDefault;
+			PVOID lpLowPtr;
 
-	bool bOption1, bShowConsle, bMainWnd, bCapting;
-	DWORD targetId; POINT pt;
-	HANDLE exeIcon, cursor;
-	PVOID lpLowPtr;
+			HWND ConsoleWnd;
+			HWND NotifyIconOverflowWindow, Shell_TrayWnd;
+		};
+		BYTE ___[0x1000];
+	};
+	BYTE page[0x1000];
 
-	HWND ConsoleWnd;
-	HWND NotifyIconOverflowWindow, Shell_TrayWnd;
-
-	inline PHYPER_WMSR as_wmsr() { return (PHYPER_WMSR)this; }
+	inline PHYPER_WMSR as_wmsr() { *(int*)this = 'WMSR'; return (PHYPER_WMSR)this; }
+	inline PHYPER_VMRD as_vmrd() { *(int*)this = 'VMRD'; return (PHYPER_VMRD)this; }
 };
-NX_G HYPER_CE* G;
+NX_G HYPER_CE* G; void debug_test();
 #endif // 

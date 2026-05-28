@@ -3,27 +3,29 @@
 #include <windows.h>
 
 #include <commctrl.h> 
-#pragma comment(lib, "comctl32.lib")
 
 #define GET_X_LPARAM(lp)                        ((int)(short)LOWORD(lp))
 #define GET_Y_LPARAM(lp)                        ((int)(short)HIWORD(lp))
 
-#define WIN_WIDTH  800
-#define WIN_HEIGHT 600
+#define WIN_WIDTH  1350
+#define WIN_HEIGHT 1150
 #define IDC_LIST   1001
 
-const int SPLITTER_HEIGHT = 6;
+const int SPLITTER_HEIGHT = 5;
 int upperHeight = 200; // 可调整
 bool draggingSplitter = false;
-POINT dragStart = { 0 };
+HWND g_hStatusBar;
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 int ui_show_mmview(void*) {
 
 	HWND hwnd = Nt::CreateWnd(MMVIEW_CAPTION, MMVIEW_CAPTION, WndProc);
-	int x = (GetSystemMetrics(SM_CXSCREEN) - WIN_WIDTH) / 2;
-	int y = (GetSystemMetrics(SM_CYSCREEN) - WIN_HEIGHT) / 2;
+	int x = (::GetSystemMetrics(SM_CXSCREEN) - WIN_WIDTH) / 2;
+	int y = (::GetSystemMetrics(SM_CYSCREEN) - WIN_HEIGHT) / 2;
+
+	Nt::AddWndStyle(hwnd, WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME);
+	Nt::AddWndIcon(hwnd, G->exeIcon);
 
 	SetWindowPos(hwnd, 0, x, y,
 		WIN_WIDTH, WIN_HEIGHT,
@@ -36,7 +38,7 @@ int ui_show_mmview(void*) {
 	return 0;
 }
 
-
+HWND g_hHeader;
 HWND hListView = NULL;
 const char * assemblyRows[] = {
 	"00401000  mov eax, [ebp+8]",
@@ -51,10 +53,8 @@ const char * assemblyRows[] = {
 	"00401018  ret"
 };
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void LayoutControls(HWND hwnd);
 void DrawBottomPane(HDC hdc, RECT rcClient);
-HWND g_hHeader;
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	static RECT rcClient;
 	switch (msg) {
@@ -63,12 +63,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 		GetClientRect(hwnd, &rcClient);
 
-		hListView = CreateWindowEx(
+		hListView = CreateWindowExW(
 			WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 			WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL,
 			0, 0, rcClient.right, upperHeight,
 			hwnd, (HMENU)0, GetModuleHandle(NULL), NULL);
 
+		Nt::UxSetWindowTheme(hListView, L"DarkMode_Explorer", NULL);
+		Nt::UxSetWindowTheme(g_hHeader, L"ItemsView", NULL);
 		g_hHeader = ListView_GetHeader(hListView);
 
 		COLORREF bg = RGB(0x20, 0x20, 0x20);
@@ -76,23 +78,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		ListView_SetTextBkColor(hListView, bg);
 		ListView_SetTextColor(hListView, RGB(255, 255, 255));
 
-		Nt::UxSetWindowTheme(hListView, L"DarkMode_Explorer", NULL);
+		SetWindowSubclass(hListView, [](HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) -> LRESULT {
+			if (uMsg == WM_NOTIFY){
+
+				if (LPNMHDR(lParam)->code == NM_CUSTOMDRAW) {
+					auto* nmcd = (LPNMCUSTOMDRAW)(lParam);
+					//SetTextColor(nmcd->hdc, RGB(255, 255, 255));
+					//SetBkColor(nmcd->hdc, RGB(32, 32, 32));
+					switch (nmcd->dwDrawStage) {
+					case CDDS_PREPAINT:
+						return CDRF_NOTIFYITEMDRAW;
+
+					case CDDS_ITEMPREPAINT: 
+						SetTextColor(nmcd->hdc, RGB(255, 255, 255));
+						SetBkColor(nmcd->hdc, RGB(32, 32, 32));
+						//SetBkMode(nmcd->hdc, TRANSPARENT);
+						return CDRF_DODEFAULT;
+					}
+					return CDRF_DODEFAULT;
+				}
+			}
+			return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+		}, 0, 0);
+
+		// 列表美化
+		ListView_SetExtendedListViewStyle(hListView, LVS_EX_FULLROWSELECT);
+
 		//Nt::UxSetWindowTheme(hListView, L"", L"");
 
 		// 两列: 地址、指令
 		LVCOLUMN lvc = { 0 };
 		lvc.mask = LVCF_WIDTH | LVCF_TEXT;
-		lvc.cx = 100;
-		lvc.pszText = (LPWSTR)L"地址";
+		lvc.cx = 280;
+		lvc.pszText = (LPWSTR)L"地址 Address";
 		ListView_InsertColumn(hListView, 0, &lvc);
-		lvc.cx = 200;
-		lvc.pszText = (LPWSTR)L"字节";
+		lvc.cx = 300;
+		lvc.pszText = (LPWSTR)L"字节 Bytes";
 		ListView_InsertColumn(hListView, 1, &lvc);
-		lvc.cx = 150;
-		lvc.pszText = (LPWSTR)L"指令";
+		lvc.cx = 350;
+		lvc.pszText = (LPWSTR)L"指令 Asm";
 		ListView_InsertColumn(hListView, 2, &lvc);
-		lvc.cx = 200;
-		lvc.pszText = (LPWSTR)L"注释";
+		lvc.cx = 1220;
+		lvc.pszText = (LPWSTR)L"注释 Note";
 		ListView_InsertColumn(hListView, 3, &lvc);
 
 		// 加10行示例
@@ -109,68 +136,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			ListView_InsertItem(hListView, &lvi);
 			ListView_SetItemText(hListView, i, 2, asmcode + 9); // skip address+2空格
 		}
-		// 列表美化
-		ListView_SetExtendedListViewStyle(hListView, LVS_EX_FULLROWSELECT);
+
+		// 创建标准状态栏 - 它会自动贴在底部，从左下角开始
+		g_hStatusBar = CreateWindowEx(
+			0, STATUSCLASSNAME, NULL,
+			WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
+			0, 0, 0, 0,
+			hwnd, NULL, NtCurrentImageBase(), NULL);
+		Nt::UxSetWindowTheme(g_hStatusBar, L"DarkMode_Explorer", NULL);
+
+		// 设置状态栏分区
+		int parts[] = { 350, -1 };
+		SendMessage(g_hStatusBar, SB_SETPARTS, 2, (LPARAM)parts);
+		SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"就绪");
 		break;
 	}
+				  
 	case WM_NOTIFY:
 	{
 		LPNMHDR hdr = (LPNMHDR)lParam;
 
-		if (hdr->hwndFrom == g_hHeader) {
-
-			switch (hdr->code)
-			{
-			case NM_CUSTOMDRAW:
-			{
-				LPNMCUSTOMDRAW lpDraw = (LPNMCUSTOMDRAW)lParam;
-
-				switch (lpDraw->dwDrawStage)
-				{
-				case CDDS_PREPAINT:
-					return CDRF_NOTIFYITEMDRAW;
-
-				case CDDS_ITEMPREPAINT:
-				{
-					HDC hdc = lpDraw->hdc;
-					RECT rc = lpDraw->rc;
-
-					// 背景
-					HBRUSH hBrush = CreateSolidBrush(RGB(0x20, 0x20, 0x20));
-					FillRect(hdc, &rc, hBrush);
-					DeleteObject(hBrush);
-
-					// 白字
-					SetTextColor(hdc, RGB(255, 255, 255));
-					SetBkMode(hdc, TRANSPARENT);
-
-					WCHAR text[128];
-
-					HDITEMW item = { 0 };
-					item.mask = HDI_TEXT;
-					item.pszText = text;
-					item.cchTextMax = 128;
-
-					Header_GetItem(g_hHeader,
-						(int)lpDraw->dwItemSpec,
-						&item);
-
-					DrawTextW(
-						hdc,
-						text,
-						-1,
-						&rc,
-						DT_CENTER |
-						DT_VCENTER |
-						DT_SINGLELINE
-					);
-
-					return CDRF_SKIPDEFAULT;
-				}
-				}
-			}
-			}
-		}
 		if (hdr->hwndFrom == hListView)
 		{
 			if (hdr->code == LVN_ITEMCHANGED)
@@ -178,8 +163,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			else if (hdr->code == NM_CUSTOMDRAW)
 			{
-				LPNMLVCUSTOMDRAW lv =
-					(LPNMLVCUSTOMDRAW)lParam;
+				auto* lv = (LPNMLVCUSTOMDRAW)lParam;
 
 				switch (lv->nmcd.dwDrawStage)
 				{
@@ -236,6 +220,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	}
 	case WM_SIZE:
+		// 
+		SendMessage(g_hStatusBar, WM_SIZE, 0, 0);
+
 		GetClientRect(hwnd, &rcClient);
 		if (upperHeight > rcClient.bottom - SPLITTER_HEIGHT - 50)
 			upperHeight = rcClient.bottom - SPLITTER_HEIGHT - 50;
@@ -251,7 +238,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		break;
 	}
-	case WM_MOUSEMOVE:
+	case WM_MOUSEMOVE: {
+
+		int x = GET_X_LPARAM(lParam);
+		int y = GET_Y_LPARAM(lParam);
+
 		if (draggingSplitter) {
 			int y = GET_Y_LPARAM(lParam);
 			GetClientRect(hwnd, &rcClient);
@@ -263,10 +254,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			LayoutControls(hwnd);
 			InvalidateRect(hwnd, NULL, TRUE);
 		}
+
+		else if (y > upperHeight && y < upperHeight + SPLITTER_HEIGHT) {
+			G->bakcur = SetCursor((HCURSOR)G->crVSplit);
+		}
+		else if (GetCursor() != G->crDefault) {
+			SetCursor((HCURSOR)G->crDefault);
+		}
 		break;
+	}
 	case WM_LBUTTONUP:
 		if (draggingSplitter) {
 			draggingSplitter = false;
+			//SetCursor((HCURSOR)G->bakcur);
+
 			ReleaseCapture();
 		}
 		break;
@@ -307,15 +308,17 @@ void LayoutControls(HWND hwnd) {
 
 // 下区：显示选中行的详情
 void DrawBottomPane(HDC hdc, RECT rcClient) {
-	RECT botRect = rcClient;
-	botRect.top = upperHeight + SPLITTER_HEIGHT;
-	//FillRect(hdc, &botRect, (HBRUSH)(COLOR_WINDOW + 1));
-	HFONT hFont = (HFONT)GetStockObject(ANSI_FIXED_FONT);
-	HFONT hOld = (HFONT)SelectObject(hdc, hFont);
+	// 7FF74BB88EC1
 
-	int sel = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
-	//std::string text = (sel != -1 && sel < (int)assemblyRows.size()) ?
-	//	std::string("选中：") + assemblyRows[sel] : "请从上方选择一行";
-	TextOutA(hdc, botRect.left + 20, botRect.top + 20, assemblyRows[sel], 6);
-	SelectObject(hdc, hOld);
+	//RECT botRect = rcClient;
+	//botRect.top = upperHeight + SPLITTER_HEIGHT;
+	////FillRect(hdc, &botRect, (HBRUSH)(COLOR_WINDOW + 1));
+	//HFONT hFont = (HFONT)GetStockObject(ANSI_FIXED_FONT);
+	//HFONT hOld = (HFONT)SelectObject(hdc, hFont);
+
+	//int sel = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+	////std::string text = (sel != -1 && sel < (int)assemblyRows.size()) ?
+	////	std::string("选中：") + assemblyRows[sel] : "请从上方选择一行";
+	//TextOutA(hdc, botRect.left + 20, botRect.top + 20, assemblyRows[sel], 6);
+	//SelectObject(hdc, hOld);
 }
