@@ -129,7 +129,7 @@
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
-      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;Shcore.lib;</AdditionalDependencies>
       <NoEntryPoint>false</NoEntryPoint>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
@@ -142,6 +142,9 @@
       <Command>
       </Command>
     </PostBuildEvent>
+    <Manifest>
+      <EnableDpiAwareness>true</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Dbg|x64'">
     <ClCompile>
@@ -167,7 +170,7 @@
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
-      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;Shcore.lib;</AdditionalDependencies>
       <NoEntryPoint>false</NoEntryPoint>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
@@ -180,6 +183,9 @@
       <Command>
       </Command>
     </PostBuildEvent>
+    <Manifest>
+      <EnableDpiAwareness>true</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -208,7 +214,7 @@
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
-      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;Shcore.lib;</AdditionalDependencies>
       <NoEntryPoint>false</NoEntryPoint>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
@@ -221,6 +227,9 @@
       <Command>copy /y "$(TargetPath)" "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"
 upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
     </PostBuildEvent>
+    <Manifest>
+      <EnableDpiAwareness>true</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithFlag|x64'">
     <ClCompile>
@@ -252,7 +261,7 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
-      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;kernel32.lib;gdi32.lib;vcruntime.lib;comctl32.lib;Shcore.lib;</AdditionalDependencies>
       <NoEntryPoint>false</NoEntryPoint>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <LinkTimeCodeGeneration />
@@ -266,6 +275,9 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
       <Command>::copy $(TargetPath) E:\
 </Command>
     </PostBuildEvent>
+    <Manifest>
+      <EnableDpiAwareness>true</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\src\drv.cc" />

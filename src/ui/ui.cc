@@ -1,6 +1,7 @@
 ﻿#include "hyperce.h"
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <ShellScalingApi.h>
 VOID ui_MainInit();
 VOID ui_ShowTrayMenu(HWND);
 VOID ui_on_create(HWND hWnd) {
@@ -10,12 +11,15 @@ VOID ui_on_create(HWND hWnd) {
 
 VOID UI_MainWnd()
 {
+	//SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+
 	HWND hwnd;
 	ui_MainInit();
 
 	hwnd = Nt::CurrentConsole();
 	if (hwnd) 
 		Nt::RemoveWndStyle(hwnd, WS_SYSMENU);
+
 
 	hwnd = Nt::CreateWnd(TRAY_CAPTION, TRAY_CAPTION,
 	+[](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -65,12 +69,13 @@ VOID UI_MainWnd()
 			Nt::DragFinish((HGLOBAL)wParam);
 			return 0ll;
 		}
+
 		else if (G->bCapting && msg == WM_LBUTTONUP)
 		{
 			G->bCapting = FALSE;
 
 			::ReleaseCapture();
-			::SetCursor((HCURSOR)G->bakcur);
+			::SetCursor((HCURSOR)G->crDefault);
 
 			Nt::GetCursorPosU32(&G->pt);
 
@@ -83,21 +88,14 @@ VOID UI_MainWnd()
 		}
 		else if (msg == WM_NCLBUTTONDOWN) {
 
-			POINT pt;
-			pt.y = ((LONG)(lParam) >> 16)+25;
-			pt.x = (LONG)(lParam) & 0xFFFF;
-			//DbgPrint("%d %d", pt.x, pt.y);
-
-			::ScreenToClient(hwnd, &pt);
-			int titleHeight = ::GetSystemMetrics(SM_CYCAPTION);
-
 			// check top-left icon area
-			if (pt.x >= 0 && pt.x < 25 && pt.y >= 0 && pt.y < titleHeight)
-			{
+			if (G->bCovering) {
+				G->bCovering = FALSE;
+
 				::SetCapture(hwnd);
 				G->bCapting = TRUE;
 				
-				G->bakcur = ::SetCursor((HCURSOR)G->cursor);
+				::SetCursor((HCURSOR)G->cursor);
 			}
 			else 
 				goto _DEF;
@@ -108,6 +106,29 @@ VOID UI_MainWnd()
 		//	if ((wParam & 0xFFF0) == SC_MOVE)
 		//		return 0ll;
 		//}
+
+		else if (msg == WM_MOUSEMOVE && G->bCovering) {
+			G->bCovering = FALSE;
+			::SetCursor((HCURSOR)G->crDefault);
+		}
+		else if (msg == WM_NCMOUSEMOVE) {
+
+			//POINT pt {
+			//	(LONG)(lParam) & 0xFFFF,
+			//	((LONG)(lParam) >> 16) + 25
+			//};
+			
+			//DAS("%d %d %u", pt.x, pt.y, (UINT)wParam);
+
+			if (wParam == HTSYSMENU) {
+				::SetCursor((HCURSOR)G->cursor);
+				G->bCovering = 1;
+			}
+			else if (G->bCovering) {
+				G->bCovering = 0;
+				::SetCursor((HCURSOR)G->crDefault);
+			}
+		}
 
 		else if (msg == WM_COMMAND)
 		{
@@ -184,6 +205,7 @@ VOID ui_MainInit() {
 		G->crHSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(14));
 		G->crVSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(15));
 		G->crDefault = ::LoadCursorW(NULL, IDC_ARROW);
+		G->dpi = ::GetDpiForSystem();
 	}
 }
 

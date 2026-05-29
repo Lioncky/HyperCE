@@ -41,7 +41,7 @@
     <AdditionalFiles>D:\Cod\HyperDbg\hyperdbg\build\bin\release\hyperhv.dll;D:\KsaLib\drv\access\Driver\x64\Release\Driver.sys;</AdditionalFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithFlag|x64'">
-    <DebuggerFlavor>WindowsRemoteDebugger</DebuggerFlavor>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
     <LocalDebuggerCommandArguments>cat PNt_x64.exe_dep.txt</LocalDebuggerCommandArguments>
     <RemoteDebuggerCommand>C:\HyperCE\$(TargetFileName)</RemoteDebuggerCommand>
