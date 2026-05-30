@@ -10,6 +10,31 @@
 #define WIN_HEIGHT 1150
 #define SPLITTER_HEIGHT 5
 
+// 滚动条滑块的虚拟最大精度区间（1万个刻度，保证拖拽滑块时的地址分辨率足够高）
+#define SCROLL_MAX_RANGE 10000
+// 【新增】下半区独立的滚动条子控件句柄
+HWND g_hBottomScroll = NULL;
+
+// 虚拟高精度轨长（1万个刻度，保证拖拽大内存地址时足够平滑）
+#define SCROLL_MAX_RANGE 10000
+#define SPLITTER_HEIGHT 5
+
+// 64位大内存边界及视口基址
+uintptr_t g_memoryMinAddress = 0x0000000000000000;
+uintptr_t g_memoryMaxAddress = 0x00007FFFFFFFFFFF;
+uintptr_t g_pageBaseAddress = 0x00007FFF10000000;
+
+// 换算公式宏（无 std 依赖）
+int AddrToPos(uintptr_t addr) {
+	double ratio = (double)(addr - g_memoryMinAddress) / (double)(g_memoryMaxAddress - g_memoryMinAddress);
+	return (int)(ratio * SCROLL_MAX_RANGE);
+}
+uintptr_t PosToAddr(int pos) {
+	double ratio = (double)pos / (double)SCROLL_MAX_RANGE;
+	uintptr_t addr = g_memoryMinAddress + (uintptr_t)(ratio * (double)(g_memoryMaxAddress - g_memoryMinAddress));
+	return (addr / 16) * 16; // 强行16字节对齐
+}
+
 // ============================================================================
 // 一、 核心度量衡与状态结构体 (仿 CE hexviewunit 测绘架构)
 // ============================================================================
@@ -41,7 +66,7 @@ void ActivateGhostEdit(HWND hWndParent, uintptr_t targetAddress, RECT rcPaneClie
 // 全局基础变量
 HWND g_hGhostEdit = NULL;              // 幽灵输入框句柄
 WNDPROC g_OldEditProc = NULL;          // 存储系统默认 Edit 的窗口过程
-uintptr_t g_pageBaseAddress = 0x7FFF1000; // 模拟当前滚动条滚到的内存基址
+//uintptr_t g_pageBaseAddress = 0x7FFF1000; // 模拟当前滚动条滚到的内存基址
 
 int upperHeight = 800; // 可调整
 
@@ -124,23 +149,44 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			SelectObject(hdc, hOldFont);
 			ReleaseDC(hwnd, hdc);
+			{
 
-			// 2. 动态塑造幽灵 Edit 演员
-			g_hGhostEdit = ::CreateWindowExW(
-				WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, L"EDIT", L"",
-				WS_CHILD | ES_UPPERCASE | ES_AUTOHSCROLL,
-				0, 0, 0, 0, hwnd, (HMENU)1002, ((LPCREATESTRUCT)lParam)->hInstance, NULL
-			);
-			LONG_PTR style = GetWindowLongPtr(g_hGhostEdit, GWL_STYLE);
-			style &= ~WS_BORDER;  // 移除边框
-			SetWindowLongPtr(g_hGhostEdit, GWL_STYLE, style);
+				// 2. 动态塑造幽灵 Edit 演员
+				g_hGhostEdit = ::CreateWindowExW(
+					WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, L"EDIT", L"",
+					WS_CHILD | ES_UPPERCASE | ES_AUTOHSCROLL,
+					0, 0, 0, 0, hwnd, (HMENU)1002, ((LPCREATESTRUCT)lParam)->hInstance, NULL
+				);
+				LONG_PTR style = GetWindowLongPtr(g_hGhostEdit, GWL_STYLE);
+				style &= ~WS_BORDER;  // 移除边框
+				SetWindowLongPtr(g_hGhostEdit, GWL_STYLE, style);
 
+				::SendMessage(g_hGhostEdit, WM_SETFONT, (WPARAM)g_Metric.hFont, TRUE);
 
-			::SendMessage(g_hGhostEdit, WM_SETFONT, (WPARAM)g_Metric.hFont, TRUE);
+				// 3. 强行子类化，接管原生 Edit 控制权
+				g_OldEditProc = (WNDPROC)::SetWindowLongPtr(g_hGhostEdit, GWLP_WNDPROC, (LONG_PTR)GhostEditSubclassProc);
+			}
+			{
+				// 【核心新增】：建立独立的下半区垂直滑块条子窗口
+				g_hBottomScroll = ::CreateWindowEx(
+					0, L"SCROLLBAR", NULL,
+					WS_CHILD | WS_VISIBLE | SBS_VERT, // 子窗口样式 | 垂直滑块样式
+					0, 0, 0, 0, hwnd, (HMENU)1003, ((LPCREATESTRUCT)lParam)->hInstance, NULL
+				);
+				Nt::UxSetWindowTheme(g_hBottomScroll, L"Explorer", NULL);
 
-			// 3. 强行子类化，接管原生 Edit 控制权
-			g_OldEditProc = (WNDPROC)::SetWindowLongPtr(g_hGhostEdit, GWLP_WNDPROC, (LONG_PTR)GhostEditSubclassProc);
+				// 给这个独立滑块条灌入 1万个刻度 的轨长控制
+				SCROLLINFO si = { 0 };
+				si.cbSize = sizeof(si);
+				si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+				si.nMin = 0;
+				si.nMax = SCROLL_MAX_RANGE;
+				si.nPage = 300; // 虚拟滑块页宽大小
+				si.nPos = AddrToPos(g_pageBaseAddress);
+				::SetScrollInfo(g_hBottomScroll, SB_CTL, &si, TRUE); // 注意是 SB_CTL
 
+				//nt::UxSetWindowDarkMode(g_hBottomScroll);
+			}
 		}
 		GetClientRect(hwnd, &rcClient);
 
@@ -528,6 +574,88 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		LayoutControls(hwnd);
 		InvalidateRect(hwnd, NULL, TRUE);
 		break;
+
+	case WM_CTLCOLOREDIT: {
+		HDC hdcStatic = (HDC)wParam;
+
+		if ((HWND)lParam == g_hGhostEdit)
+		{
+			// 设置文字的背景颜色，使其与控件背景一致
+			SetBkColor(hdcStatic, RGB(0x20, 0x20, 0x20));
+
+			//SetTextColor(hdcStatic, RGB(255, 255, 255)); // 白色
+			SetTextColor(hdcStatic, RGB(0, 0x7F, 0)); // 绿色渲染
+
+			// 返回背景画刷，系统会自动用它涂抹背景
+			return (INT_PTR)nt::darkbrush();
+		}
+		break;
+	}
+						// 拦截下半区专属滚动响应
+	case WM_VSCROLL: {
+		// 只有当消息确实来自于我们右下角的独立子控件时才放行，绝不惊动上半区
+		if (lParam == (LPARAM)g_hBottomScroll) {
+			int scrollCode = LOWORD(wParam);
+			if (g_Metric.isEditing) ::SetFocus(hwnd); // 滚动前踢掉 Edit 焦点存盘
+
+			switch (scrollCode) {
+			case SB_LINEUP:   g_pageBaseAddress -= g_Metric.bytesPerRow; break;
+			case SB_LINEDOWN: g_pageBaseAddress += g_Metric.bytesPerRow; break;
+			case SB_PAGEUP:   g_pageBaseAddress -= g_Metric.bytesPerRow * 10; break;
+			case SB_PAGEDOWN: g_pageBaseAddress += g_Metric.bytesPerRow * 10; break;
+			case SB_THUMBTRACK: // 鼠标按住滑块拖拽
+				g_pageBaseAddress = PosToAddr(HIWORD(wParam));
+				break;
+			}
+
+			// 安全越界兜底
+			if (g_pageBaseAddress < g_memoryMinAddress) g_pageBaseAddress = g_memoryMinAddress;
+			if (g_pageBaseAddress > g_memoryMaxAddress) g_pageBaseAddress = g_memoryMaxAddress;
+
+			// 刷新独立滚动条滑块的视觉位置
+			SCROLLINFO si = { 0 };
+			si.cbSize = sizeof(si);
+			si.fMask = SIF_POS;
+			si.nPos = AddrToPos(g_pageBaseAddress);
+			::SetScrollInfo(g_hBottomScroll, SB_CTL, &si, TRUE);
+
+			// 局部冲刷重绘自绘区，ListView 稳如泰山，毫无波动
+			::InvalidateRect(hwnd, &rcBottomPane, FALSE);
+		}
+		break;
+	}
+
+				   // 拦截鼠标滚轮
+	case WM_MOUSEWHEEL: {
+		POINT pt;
+		pt.x = GET_X_LPARAM(lParam);
+		pt.y = GET_Y_LPARAM(lParam);
+		::ScreenToClient(hwnd, &pt);
+
+		// 【体验升级】：只有当鼠标指针悬停在下半区领地内时，滚轮才会带着下半区数据滚动
+		if (::PtInRect(&rcBottomPane, pt) || ::PtInRect(&rcBottomPane, pt)) {
+			short delta = (short)HIWORD(wParam);
+			if (g_Metric.isEditing) ::SetFocus(hwnd);
+
+			if (delta > 0) g_pageBaseAddress -= g_Metric.bytesPerRow * 3;
+			else           g_pageBaseAddress += g_Metric.bytesPerRow * 3;
+
+			if (g_pageBaseAddress < g_memoryMinAddress) g_pageBaseAddress = g_memoryMinAddress;
+			if (g_pageBaseAddress > g_memoryMaxAddress) g_pageBaseAddress = g_memoryMaxAddress;
+
+			// 同步视觉滑块位置
+			SCROLLINFO si = { 0 };
+			si.cbSize = sizeof(si);
+			si.fMask = SIF_POS;
+			si.nPos = AddrToPos(g_pageBaseAddress);
+			::SetScrollInfo(g_hBottomScroll, SB_CTL, &si, TRUE);
+
+			::InvalidateRect(hwnd, &rcBottomPane, FALSE);
+			return 0; // 拦截滚轮，不向外扩散
+		}
+		break;
+	}
+
 	case WM_LBUTTONDOWN: {
 		int x = lParam & 0xffff; // GET_X_LPARAM(lParam);
 		int y = (lParam >> 16) & 0xffff; // GET_Y_LPARAM(lParam);
@@ -537,15 +665,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			SetCapture(hwnd);
 		}
 
-		int mx = x;
-		int my = y;
-		if (::PtInRect(&rcBottomPane, { mx, my })) {
+		if (::PtInRect(&rcBottomPane, { x, y })) {
 			// 如果目前正在编辑，鼠标点下时必须无条件先踢掉 Edit 焦点让其安全存盘
 			if (g_Metric.isEditing) {
 				::SetFocus(hwnd);
 			}
 			// 计算多选绝对内存地址起点
-			uintptr_t clickAddr = GetAddressFromMouse(mx, my - rcBottomPane.top, g_pageBaseAddress);
+			uintptr_t clickAddr = GetAddressFromMouse(x, y - rcBottomPane.top, g_pageBaseAddress);
 			if (clickAddr != 0) {
 				g_Metric.hasSelection = true;
 				g_Metric.selectionStart = clickAddr;
@@ -642,6 +768,49 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 // 重布局ListView和分割条
+void LayoutControls2(HWND hwnd) {
+	RECT rc;
+	GetClientRect(hwnd, &rc);
+
+	// 1. 让状态栏自己去适应并贴在主窗口的最底部 (Win32 标准做法)
+	if (G->hStatusBar != NULL) {
+		SendMessage(G->hStatusBar, WM_SIZE, 0, 0);
+	}
+
+	// 2. 动态获取状态栏占用的物理高度
+	int statusBarHeight = 0;
+	if (G->hStatusBar != NULL && IsWindowVisible(G->hStatusBar)) {
+		RECT rcStatus;
+		GetWindowRect(G->hStatusBar, &rcStatus);
+		// 将屏幕坐标的高差转换为像素高度
+		statusBarHeight = rcStatus.bottom - rcStatus.top;
+	}
+
+	// 3. 移动你的上半区 ListView
+	MoveWindow(G->hListView, rc.left, rc.top, rc.right - rc.left, upperHeight, TRUE);
+
+	auto g_rcBottomPane = rcBottomPane;
+	// 4. 【核心修正】：算地下半区的总地盘时，bottom 必须扣掉状态栏的高度
+	g_rcBottomPane.left = rc.left;
+	g_rcBottomPane.top = rc.top + upperHeight + SPLITTER_HEIGHT;
+	g_rcBottomPane.right = rc.right;
+	g_rcBottomPane.bottom = rc.bottom - statusBarHeight; // 绝杀：到状态栏的头顶为止
+
+	// 5. 移动独立滚动条，同样让它乖乖待在状态栏上方
+	if (g_hBottomScroll != NULL) {
+		int scrollWidth = G->get_dpi_mul(18); // 标准滚动条物理位宽
+
+		MoveWindow(g_hBottomScroll,
+			g_rcBottomPane.right - scrollWidth,
+			g_rcBottomPane.top,
+			scrollWidth,
+			g_rcBottomPane.bottom - g_rcBottomPane.top, // 高度完美契合
+			TRUE);
+
+		// 缩进自绘区域，防挡住字符
+		g_rcBottomPane.right -= scrollWidth;
+	}
+}
 void LayoutControls(HWND hwnd) {
 	RECT rc;
 	GetClientRect(hwnd, &rc);
@@ -653,6 +822,31 @@ void LayoutControls(HWND hwnd) {
 	rcBottomPane.top = rc.top + upperHeight + SPLITTER_HEIGHT;
 	rcBottomPane.right = rc.right;
 	rcBottomPane.bottom = rc.bottom;
+
+	// 3. 【核心兼容】：如果独立滚动条已经创建，把它精确锁在下半区的最右侧
+	if (g_hBottomScroll != NULL) {
+		int scrollWidth = G->get_dpi_mul(18); // 标准滚动条物理位宽
+
+		int statusBarHeight = 0;
+		if (G->hStatusBar != NULL && IsWindowVisible(G->hStatusBar)) {
+			RECT rcStatus;
+			GetWindowRect(G->hStatusBar, &rcStatus);
+			// 将屏幕坐标的高差转换为像素高度
+			statusBarHeight = rcStatus.bottom - rcStatus.top;
+		}
+
+		// 移动独立滚动条：贴在最右侧，高度和下半区完全一致
+		MoveWindow(g_hBottomScroll,
+			rcBottomPane.right - scrollWidth,
+			rcBottomPane.top,
+			scrollWidth,
+			rcBottomPane.bottom - rcBottomPane.top - statusBarHeight,
+			TRUE);
+
+		// 工业级自绘细节：把下半区手绘图层的右边界向左挪 18 像素
+		// 这样手绘的 ASCII 字符和背景，就不会被滚动条控件挡住
+		rcBottomPane.right -= scrollWidth;
+	}
 }
 
 
@@ -902,7 +1096,7 @@ void ActivateGhostEdit(HWND hWndParent, uintptr_t targetAddress, RECT rcPaneClie
 	::SetFocus(g_hGhostEdit);
 
 	// 选中所有文本方便直接覆盖输入
-	::SendMessage(g_hGhostEdit, EM_SETSEL, 0, -1);
+	//::SendMessage(g_hGhostEdit, EM_SETSEL, -1, 0);
 
 	// 刷新区域
 	::InvalidateRect(hWndParent, &rcPaneClient, FALSE);
