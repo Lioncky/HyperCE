@@ -1,8 +1,7 @@
 ﻿#include "hyperce.h"
 #include <Windows.h>
 #include <CommCtrl.h>
-#include <ShellScalingApi.h>
-VOID ui_MainInit();
+//#include <ShellScalingApi.h>
 VOID ui_ShowTrayMenu(HWND);
 VOID ui_on_create(HWND hWnd) {
 	DAS("!ui_on_create");
@@ -11,15 +10,11 @@ VOID ui_on_create(HWND hWnd) {
 
 VOID UI_MainWnd()
 {
-	//SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
-
 	HWND hwnd;
-	ui_MainInit();
 
 	hwnd = Nt::CurrentConsole();
 	if (hwnd) 
 		Nt::RemoveWndStyle(hwnd, WS_SYSMENU);
-
 
 	hwnd = Nt::CreateWnd(TRAY_CAPTION, TRAY_CAPTION,
 	+[](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -194,21 +189,6 @@ VOID UI_MainWnd()
 
 }
 
-VOID ui_MainInit() {
-
-	// Very Thanks to ResourceHacker
-	// https://docwiki.embarcadero.com/Libraries/Alexandria/en/Vcl.Controls.TCursor?v=23.1
-	if (!G->exeIcon) {
-		G->exeIcon = ::LoadIconW(NtCurrentImageBase(), MAKEINTRESOURCEW(1));
-		G->cursor = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(5));
-		G->crSizeAll = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(22));
-		G->crHSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(14));
-		G->crVSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(15));
-		G->crDefault = ::LoadCursorW(NULL, IDC_ARROW);
-		G->dpi = ::GetDpiForSystem();
-	}
-}
-
 void ui_ShowTrayMenu(HWND hwnd)
 {
 	HMENU hMenu = CreatePopupMenu();
@@ -222,4 +202,35 @@ void ui_ShowTrayMenu(HWND hwnd)
 	// SetForegroundWindow(hwnd); // 必须调用，否则菜单可能不消失
 	TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, G->pt.x, G->pt.y, 0, hwnd, nullptr);
 	DestroyMenu(hMenu);
+}
+
+VOID UI_MainInit() {
+
+	nt::cpuid(0);
+
+	// SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+
+	// Very Thanks to ResourceHacker
+	// https://docwiki.embarcadero.com/Libraries/Alexandria/en/Vcl.Controls.TCursor?v=23.1
+	if (!G->exeIcon) {
+		G->exeIcon = ::LoadIconW(NtCurrentImageBase(), MAKEINTRESOURCEW(1));
+		G->cursor = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(5));
+		G->crSizeAll = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(22));
+		G->crHSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(14));
+		G->crVSplit = ::LoadCursorW(NtCurrentImageBase(), MAKEINTRESOURCEW(15));
+		G->crDefault = ::LoadCursorW(NULL, IDC_ARROW);
+		G->dpi = ::GetDpiForSystem();
+
+		// Set up read memory functions
+		if (!G->ReadProcessMemoryEx) {
+
+			G->hProcessHandle = HPROC;
+			G->ReadProcessMemoryEx = [](LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize) -> INT {
+				return Nt::ReadProc(G->hProcessHandle, (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
+			};
+			G->WriteProcessMemoryEx = [](LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize) -> INT {
+				return Nt::ProtectWrite(G->hProcessHandle, (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
+			};
+		}
+	}
 }

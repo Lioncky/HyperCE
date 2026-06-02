@@ -22,7 +22,7 @@ HWND g_hBottomScroll = NULL;
 // 64位大内存边界及视口基址
 uintptr_t g_memoryMinAddress = 0x0000000000000000;
 uintptr_t g_memoryMaxAddress = 0x00007FFFFFFFFFFF;
-uintptr_t g_pageBaseAddress = 0x00007FFF10000000;
+uintptr_t g_pageBaseAddress = 0x100000000;
 
 // 换算公式宏（无 std 依赖）
 int AddrToPos(uintptr_t addr) {
@@ -55,7 +55,8 @@ struct HexViewMetrics {
 	bool isEditing = false;       // 是否处于激活编辑状态
 
 	HFONT hFont = NULL;           // 等宽字体句柄
-} g_Metric{
+};
+HexViewMetrics g_Metric{
 
 140,25,12,200,32,32,
 };
@@ -86,7 +87,20 @@ const char* assemblyRows[] = {
 // ============================================================================
 // 二、 游戏数据交互层 (实际开发中替换为标准驱动或 Read/WriteProcessMemory)
 // ============================================================================
-void MockReadProcessMemory(uintptr_t address, unsigned char* buffer, size_t size) {
+BOOL MockWriteProcessMemory(uintptr_t address, unsigned char* buffer, size_t size) {
+
+	if (G->WriteProcessMemoryEx((char*)address, buffer, size)) {
+		return true;
+	}
+	return false;
+}
+BOOL MockReadProcessMemory(uintptr_t address, unsigned char* buffer, size_t size) {
+
+	if (G->ReadProcessMemoryEx((char*)address, buffer, size)) {
+		return true;
+	}
+	return false;
+
 	for (size_t i = 0; i < size; ++i) {
 		// 通过地址生成伪数据，方便测试观察
 		buffer[i] = (unsigned char)((address + i) ^ 0x55);
@@ -101,9 +115,9 @@ void on_selected_ListView(int sel) {
 }
 int ui_show_mmview(void*) {
 
-	int x, y, dpi = GetDpiForSystem();
-	int w = WIN_WIDTH * dpi / 96;
-	int h = WIN_HEIGHT * dpi / 96;
+	int x, y, w, h;
+	w = G->get_dpi_mul(WIN_WIDTH);
+	h = G->get_dpi_mul(WIN_HEIGHT);
 	x = (::GetSystemMetrics(SM_CXSCREEN) - w) / 2;
 	y = (::GetSystemMetrics(SM_CYSCREEN) - h) / 2;
 
@@ -119,212 +133,216 @@ int ui_show_mmview(void*) {
 	}
 	return 0;
 }
+void on_wm_create(HWND hwnd) {
+	RECT rcClient;
+	Nt::EnableDarkModeDwm(hwnd);
+	//nt::AddWndStyle(hwnd, WS_VSCROLL); // 添加垂直滚动条样式
+	{
+		// 1. 初始化度量参数 (使用 Consolas 字体强制测绘)
+		HDC hdc = GetDC(hwnd);
 
+		g_Metric.hFont = CreateFont(G->get_dpi_mul(18), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+			DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+			CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
+		HFONT hOldFont = (HFONT)SelectObject(hdc, g_Metric.hFont);
+
+		SIZE sizeChar, sizeByte;
+		GetTextExtentPoint32(hdc, L"X", 1, &sizeChar);
+		GetTextExtentPoint32(hdc, L"XX ", 3, &sizeByte);
+
+		g_Metric.charSize = sizeChar.cx;
+		g_Metric.byteSizeNoChar = sizeByte.cx;
+		g_Metric.addressWidth = sizeChar.cx * 16; // 模拟8位地址位宽
+		g_Metric.rowHeight = sizeChar.cy + 4;    // 动态行高加补空隙
+
+		SelectObject(hdc, hOldFont);
+		ReleaseDC(hwnd, hdc);
+		{
+
+			// 2. 动态塑造幽灵 Edit 演员
+			g_hGhostEdit = ::CreateWindowExW(
+				WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, L"EDIT", L"",
+				WS_CHILD | ES_UPPERCASE | ES_AUTOHSCROLL,
+				0, 0, 0, 0, hwnd, (HMENU)1002, NtCurrentImageBase(), NULL
+			);
+			LONG_PTR style = GetWindowLongPtr(g_hGhostEdit, GWL_STYLE);
+			style &= ~WS_BORDER;  // 移除边框
+			SetWindowLongPtr(g_hGhostEdit, GWL_STYLE, style);
+
+			::SendMessage(g_hGhostEdit, WM_SETFONT, (WPARAM)g_Metric.hFont, TRUE);
+
+			// 3. 强行子类化，接管原生 Edit 控制权
+			g_OldEditProc = (WNDPROC)::SetWindowLongPtr(g_hGhostEdit, GWLP_WNDPROC, (LONG_PTR)GhostEditSubclassProc);
+		}
+		{
+			// 【核心新增】：建立独立的下半区垂直滑块条子窗口
+			g_hBottomScroll = ::CreateWindowEx(
+				0, L"SCROLLBAR", NULL,
+				WS_CHILD | WS_VISIBLE | SBS_VERT, // 子窗口样式 | 垂直滑块样式
+				0, 0, 0, 0, hwnd, (HMENU)1003, NtCurrentImageBase(), NULL
+			);
+			Nt::UxSetWindowTheme(g_hBottomScroll, L"Explorer", NULL);
+
+			// 给这个独立滑块条灌入 1万个刻度 的轨长控制
+			SCROLLINFO si = { 0 };
+			si.cbSize = sizeof(si);
+			si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+			si.nMin = 0;
+			si.nMax = SCROLL_MAX_RANGE;
+			si.nPage = 300; // 虚拟滑块页宽大小
+			si.nPos = AddrToPos(g_pageBaseAddress);
+			::SetScrollInfo(g_hBottomScroll, SB_CTL, &si, TRUE); // 注意是 SB_CTL
+
+			//nt::UxSetWindowDarkMode(g_hBottomScroll);
+		}
+	}
+	GetClientRect(hwnd, &rcClient);
+
+	G->hListView = CreateWindowExW(
+		WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
+		WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_OWNERDATA,
+		0, 0, rcClient.right, upperHeight,
+		hwnd, (HMENU)0, GetModuleHandle(NULL), NULL);
+
+	Nt::UxSetWindowTheme(G->hListView, L"DarkMode_Explorer", NULL);
+	Nt::UxSetWindowTheme(G->hHeader, L"ItemsView", NULL);
+	G->hHeader = ListView_GetHeader(G->hListView);
+
+	{
+		// 2. 设定理想行高（比如未缩放前期望是 22 像素）
+
+		// 3. 创建一个空的 ImageList。宽度设为 1（尽量小），高度设为缩放后的行高
+		HIMAGELIST hEmptyIL = ImageList_Create(1, G->get_dpi_mul(22), ILC_COLOR32, 1, 1);
+
+		// 4. 将其绑定到 ListView 上
+		ListView_SetImageList(G->hListView, hEmptyIL, LVSIL_SMALL);
+	}
+
+	// 1. 动态计算高度：把原本期望的 20 像素，根据当前的 DPI 进行等比例放大
+
+	// 2. 创建一个加粗字体
+	HFONT hHeaderFont = CreateFont(
+		G->get_dpi_mul(22), 0, 0, 0, FW_BOLD, TRUE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei"
+	);
+
+	// 3. 仅把加粗字体设置给 Header 控件
+	SendMessage(G->hHeader, WM_SETFONT, (WPARAM)hHeaderFont, TRUE);
+
+	COLORREF bg = RGB(0x20, 0x20, 0x20);
+	ListView_SetBkColor(G->hListView, bg);
+	ListView_SetTextBkColor(G->hListView, bg);
+	ListView_SetTextColor(G->hListView, RGB(255, 255, 255));
+
+	SetWindowSubclass(G->hListView, [](HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) -> LRESULT {
+		if (uMsg == WM_NOTIFY) {
+
+			if (LPNMHDR(lParam)->code == NM_CUSTOMDRAW) {
+				auto* nmcd = (LPNMCUSTOMDRAW)(lParam);
+				//SetTextColor(nmcd->hdc, RGB(255, 255, 255));
+				//SetBkColor(nmcd->hdc, RGB(32, 32, 32));
+				switch (nmcd->dwDrawStage) {
+				case CDDS_PREPAINT:
+					return CDRF_NOTIFYITEMDRAW;
+
+				case CDDS_ITEMPREPAINT:
+					SetTextColor(nmcd->hdc, RGB(255, 255, 255));
+					SetBkColor(nmcd->hdc, RGB(32, 32, 32));
+					//SetBkMode(nmcd->hdc, TRANSPARENT);
+					return CDRF_DODEFAULT;
+				}
+				return CDRF_DODEFAULT;
+			}
+		}
+		return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+		}, 0, 0);
+
+	// 列表美化
+	ListView_SetExtendedListViewStyle(G->hListView, LVS_EX_FULLROWSELECT);
+
+	//Nt::UxSetWindowTheme(hListView, L"", L"");
+
+	// 两列: 地址、指令
+	LVCOLUMN lvc = { 0 };
+	lvc.mask = LVCF_WIDTH | LVCF_TEXT;
+	lvc.cx = 580;
+	lvc.pszText = (LPWSTR)L"地址 Address";
+	ListView_InsertColumn(G->hListView, 0, &lvc);
+	lvc.cx = 380;
+	lvc.pszText = (LPWSTR)L"字节 Bytes";
+	ListView_InsertColumn(G->hListView, 1, &lvc);
+	lvc.cx = 360;
+	lvc.pszText = (LPWSTR)L"指令 Asm";
+	ListView_InsertColumn(G->hListView, 2, &lvc);
+	lvc.cx = 1020;
+	lvc.pszText = (LPWSTR)L"注释 Note";
+	ListView_InsertColumn(G->hListView, 3, &lvc);
+
+	ListView_SetItemCount(G->hListView, 1000000);
+	ListView_SetItemState(G->hListView, -1, 0, LVIS_SELECTED);  // 清除所有选中
+	ListView_EnsureVisible(G->hListView, 500010, FALSE);  // 滚动到目标项
+	ListView_SetItemState(G->hListView, 500000, LVNI_SELECTED | LVNI_FOCUSED, LVNI_SELECTED | LVNI_FOCUSED);
+
+	SetFocus(G->hListView);
+
+
+	// 加10行示例
+	if (0) for (int i = 0; i < (int)10; ++i) {
+		LVITEMW lvi = {};
+		lvi.mask = LVIF_TEXT;
+		static wchar_t addr[32], asmcode[68];
+		nt::tow(asmcode, assemblyRows[i]);
+
+		lvi.iItem = i;
+
+		nt::tow(addr, assemblyRows[i]); addr[8] = 0;
+		lvi.pszText = (LPWSTR)addr;
+		ListView_InsertItem(G->hListView, &lvi);
+		ListView_SetItemText(G->hListView, i, 2, asmcode + 9); // skip address+2空格
+	}
+
+	// 创建标准状态栏 - 它会自动贴在底部，从左下角开始
+	G->hStatusBar = CreateWindowEx(
+		0, STATUSCLASSNAME, NULL,
+		WS_CHILD | WS_VISIBLE, // | SBARS_SIZEGRIP
+		0, 0, 0, 0,
+		hwnd, NULL, NtCurrentImageBase(), NULL);
+
+
+	//nt::UxClearWindowTheme(G->hStatusBar);
+	//SetWindowPos(G->hStatusBar, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+	//int borders[3];
+	//SendMessage(G->hStatusBar, SB_GETBORDERS, 0, (LPARAM)&borders);
+	//borders[1] = 1;
+	//borders[2] = 1;
+	//SendMessage(G->hStatusBar, WM_USER + 5, 0, (LPARAM)&borders);
+
+	//nt::GetWndStyle(G->hStatusBar);
+	//nt::RemoveWndStyle(G->hStatusBar, WS_BORDER | WS_THICKFRAME);  // 移除边框)
+
+	//Nt::UxSetWindowDarkMode(G->hStatusBar);
+	//Nt::ThemeChangedWnd(G->hStatusBar);
+	//InvalidateRect(G->hStatusBar, NULL, TRUE);
+	//UpdateWindow(G->hStatusBar);
+
+	// 设置状态栏分区
+	//int parts[] = { 350, -1 };
+	//SendMessage(G->hStatusBar, SB_SETPARTS, 2 | SBT_OWNERDRAW, (LPARAM)parts);
+
+	SendMessageW(G->hStatusBar, SB_SETTEXT, 0 | SBT_OWNERDRAW, (LPARAM)L"就绪");
+
+
+}
 
 void LayoutControls(HWND hwnd);
 void DrawBottomPane(HDC hdc, RECT rcClient);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	static RECT rcClient;
 	switch (msg) {
-	case WM_CREATE: {
-		Nt::EnableDarkModeDwm(hwnd);
-		//nt::AddWndStyle(hwnd, WS_VSCROLL); // 添加垂直滚动条样式
-		{
-			// 1. 初始化度量参数 (使用 Consolas 字体强制测绘)
-			HDC hdc = GetDC(hwnd);
-			
-			g_Metric.hFont = CreateFont(G->get_dpi_mul(18), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-				CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
-			HFONT hOldFont = (HFONT)SelectObject(hdc, g_Metric.hFont);
-
-			SIZE sizeChar, sizeByte;
-			GetTextExtentPoint32(hdc, L"X", 1, &sizeChar);
-			GetTextExtentPoint32(hdc, L"XX ", 3, &sizeByte);
-
-			g_Metric.charSize = sizeChar.cx;
-			g_Metric.byteSizeNoChar = sizeByte.cx;
-			g_Metric.addressWidth = sizeChar.cx * 16; // 模拟8位地址位宽
-			g_Metric.rowHeight = sizeChar.cy + 4;    // 动态行高加补空隙
-
-			SelectObject(hdc, hOldFont);
-			ReleaseDC(hwnd, hdc);
-			{
-
-				// 2. 动态塑造幽灵 Edit 演员
-				g_hGhostEdit = ::CreateWindowExW(
-					WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, L"EDIT", L"",
-					WS_CHILD | ES_UPPERCASE | ES_AUTOHSCROLL,
-					0, 0, 0, 0, hwnd, (HMENU)1002, ((LPCREATESTRUCT)lParam)->hInstance, NULL
-				);
-				LONG_PTR style = GetWindowLongPtr(g_hGhostEdit, GWL_STYLE);
-				style &= ~WS_BORDER;  // 移除边框
-				SetWindowLongPtr(g_hGhostEdit, GWL_STYLE, style);
-
-				::SendMessage(g_hGhostEdit, WM_SETFONT, (WPARAM)g_Metric.hFont, TRUE);
-
-				// 3. 强行子类化，接管原生 Edit 控制权
-				g_OldEditProc = (WNDPROC)::SetWindowLongPtr(g_hGhostEdit, GWLP_WNDPROC, (LONG_PTR)GhostEditSubclassProc);
-			}
-			{
-				// 【核心新增】：建立独立的下半区垂直滑块条子窗口
-				g_hBottomScroll = ::CreateWindowEx(
-					0, L"SCROLLBAR", NULL,
-					WS_CHILD | WS_VISIBLE | SBS_VERT, // 子窗口样式 | 垂直滑块样式
-					0, 0, 0, 0, hwnd, (HMENU)1003, ((LPCREATESTRUCT)lParam)->hInstance, NULL
-				);
-				Nt::UxSetWindowTheme(g_hBottomScroll, L"Explorer", NULL);
-
-				// 给这个独立滑块条灌入 1万个刻度 的轨长控制
-				SCROLLINFO si = { 0 };
-				si.cbSize = sizeof(si);
-				si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
-				si.nMin = 0;
-				si.nMax = SCROLL_MAX_RANGE;
-				si.nPage = 300; // 虚拟滑块页宽大小
-				si.nPos = AddrToPos(g_pageBaseAddress);
-				::SetScrollInfo(g_hBottomScroll, SB_CTL, &si, TRUE); // 注意是 SB_CTL
-
-				//nt::UxSetWindowDarkMode(g_hBottomScroll);
-			}
-		}
-		GetClientRect(hwnd, &rcClient);
-
-		G->hListView = CreateWindowExW(
-			WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
-			WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_OWNERDATA,
-			0, 0, rcClient.right, upperHeight,
-			hwnd, (HMENU)0, GetModuleHandle(NULL), NULL);
-
-		Nt::UxSetWindowTheme(G->hListView, L"DarkMode_Explorer", NULL);
-		Nt::UxSetWindowTheme(G->hHeader, L"ItemsView", NULL);
-		G->hHeader = ListView_GetHeader(G->hListView);
-
-		{
-			// 2. 设定理想行高（比如未缩放前期望是 22 像素）
-			
-			// 3. 创建一个空的 ImageList。宽度设为 1（尽量小），高度设为缩放后的行高
-			HIMAGELIST hEmptyIL = ImageList_Create(1, G->get_dpi_mul(22), ILC_COLOR32, 1, 1);
-
-			// 4. 将其绑定到 ListView 上
-			ListView_SetImageList(G->hListView, hEmptyIL, LVSIL_SMALL);
-		}
-
-		// 1. 动态计算高度：把原本期望的 20 像素，根据当前的 DPI 进行等比例放大
-	
-		// 2. 创建一个加粗字体
-		HFONT hHeaderFont = CreateFont(
-			G->get_dpi_mul(22), 0, 0, 0, FW_BOLD, TRUE, FALSE, FALSE,
-			DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei"
-		);
-
-		// 3. 仅把加粗字体设置给 Header 控件
-		SendMessage(G->hHeader, WM_SETFONT, (WPARAM)hHeaderFont, TRUE);
-
-		COLORREF bg = RGB(0x20, 0x20, 0x20);
-		ListView_SetBkColor(G->hListView, bg);
-		ListView_SetTextBkColor(G->hListView, bg);
-		ListView_SetTextColor(G->hListView, RGB(255, 255, 255));
-
-		SetWindowSubclass(G->hListView, [](HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) -> LRESULT {
-			if (uMsg == WM_NOTIFY){
-
-				if (LPNMHDR(lParam)->code == NM_CUSTOMDRAW) {
-					auto* nmcd = (LPNMCUSTOMDRAW)(lParam);
-					//SetTextColor(nmcd->hdc, RGB(255, 255, 255));
-					//SetBkColor(nmcd->hdc, RGB(32, 32, 32));
-					switch (nmcd->dwDrawStage) {
-					case CDDS_PREPAINT:
-						return CDRF_NOTIFYITEMDRAW;
-
-					case CDDS_ITEMPREPAINT: 
-						SetTextColor(nmcd->hdc, RGB(255, 255, 255));
-						SetBkColor(nmcd->hdc, RGB(32, 32, 32));
-						//SetBkMode(nmcd->hdc, TRANSPARENT);
-						return CDRF_DODEFAULT;
-					}
-					return CDRF_DODEFAULT;
-				}
-			}
-			return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-		}, 0, 0);
-
-		// 列表美化
-		ListView_SetExtendedListViewStyle(G->hListView, LVS_EX_FULLROWSELECT);
-
-		//Nt::UxSetWindowTheme(hListView, L"", L"");
-
-		// 两列: 地址、指令
-		LVCOLUMN lvc = { 0 };
-		lvc.mask = LVCF_WIDTH | LVCF_TEXT;
-		lvc.cx = 580;
-		lvc.pszText = (LPWSTR)L"地址 Address";
-		ListView_InsertColumn(G->hListView, 0, &lvc);
-		lvc.cx = 380;
-		lvc.pszText = (LPWSTR)L"字节 Bytes";
-		ListView_InsertColumn(G->hListView, 1, &lvc);
-		lvc.cx = 360;
-		lvc.pszText = (LPWSTR)L"指令 Asm";
-		ListView_InsertColumn(G->hListView, 2, &lvc);
-		lvc.cx = 1020;
-		lvc.pszText = (LPWSTR)L"注释 Note";
-		ListView_InsertColumn(G->hListView, 3, &lvc);
-
-		ListView_SetItemCount(G->hListView, 1000000);
-		ListView_SetItemState(G->hListView, -1, 0, LVIS_SELECTED);  // 清除所有选中
-		ListView_EnsureVisible(G->hListView, 500010, FALSE);  // 滚动到目标项
-		ListView_SetItemState(G->hListView, 500000, LVNI_SELECTED | LVNI_FOCUSED, LVNI_SELECTED | LVNI_FOCUSED);
-
-		SetFocus(G->hListView);
-
-
-		// 加10行示例
-		if (0) for (int i = 0; i < (int)10; ++i) {
-			LVITEMW lvi = {};
-			lvi.mask = LVIF_TEXT;
-			static wchar_t addr[32], asmcode[68];
-			nt::tow(asmcode, assemblyRows[i]);
-
-			lvi.iItem = i;
-
-			nt::tow(addr, assemblyRows[i]); addr[8] = 0;
-			lvi.pszText = (LPWSTR)addr;
-			ListView_InsertItem(G->hListView, &lvi);
-			ListView_SetItemText(G->hListView, i, 2, asmcode + 9); // skip address+2空格
-		}
-
-		// 创建标准状态栏 - 它会自动贴在底部，从左下角开始
-		G->hStatusBar = CreateWindowEx(
-			0, STATUSCLASSNAME, NULL,
-			WS_CHILD | WS_VISIBLE, // | SBARS_SIZEGRIP
-			0, 0, 0, 0,
-			hwnd, NULL, NtCurrentImageBase(), NULL);
-
-			
-		//nt::UxClearWindowTheme(G->hStatusBar);
-		//SetWindowPos(G->hStatusBar, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
-		//int borders[3];
-		//SendMessage(G->hStatusBar, SB_GETBORDERS, 0, (LPARAM)&borders);
-		//borders[1] = 1;
-		//borders[2] = 1;
-		//SendMessage(G->hStatusBar, WM_USER + 5, 0, (LPARAM)&borders);
-
-		//nt::GetWndStyle(G->hStatusBar);
-		//nt::RemoveWndStyle(G->hStatusBar, WS_BORDER | WS_THICKFRAME);  // 移除边框)
-
-		//Nt::UxSetWindowDarkMode(G->hStatusBar);
-		//Nt::ThemeChangedWnd(G->hStatusBar);
-		//InvalidateRect(G->hStatusBar, NULL, TRUE);
-		//UpdateWindow(G->hStatusBar);
-
-		// 设置状态栏分区
-		//int parts[] = { 350, -1 };
-		//SendMessage(G->hStatusBar, SB_SETPARTS, 2 | SBT_OWNERDRAW, (LPARAM)parts);
-		
-		SendMessageW(G->hStatusBar, SB_SETTEXT, 0 | SBT_OWNERDRAW, (LPARAM)L"就绪");
+	case WM_CREATE: 
+		on_wm_create(hwnd);
 		break;
-	}
 	case WM_DRAWITEM:
 	{
 		auto* lpDrawItem = (LPDRAWITEMSTRUCT)lParam;
@@ -521,7 +539,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			// 4. 循环读取内存并格式化拼接
 			for (uintptr_t addr = minSel; addr <= maxSel; ++addr) {
 				unsigned char bVal = 0;
-				MockReadProcessMemory(addr, &bVal, 1);
+				
+				if (!MockReadProcessMemory(addr, &bVal, 1))
+				{
+					*(unsigned*)pCurrent = *(unsigned*)"?? ";
+					pCurrent += 3; // 占位符也占用 3 个字符
+					continue;
+				}
 
 				// 指针式安全格式化：sprintf_s 会返回成功写入的字符数（通常是 3）
 				// 每次写入后，指针向后移动 3 位，紧随其后继续拼接
@@ -625,7 +649,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	}
 
-				   // 拦截鼠标滚轮
+	// 拦截鼠标滚轮
 	case WM_MOUSEWHEEL: {
 		POINT pt;
 		pt.x = GET_X_LPARAM(lParam);
@@ -915,7 +939,7 @@ RECT GetRectFromAddress1(uintptr_t targetAddress, RECT rcPaneClient) {
 RECT GetRectFromAddress(uintptr_t targetAddress, RECT rcPaneClient) {
 	RECT rcGrid = { 0, 0, 0, 0 };
 
-	// ✅ 计算相对于当前页面的偏移
+	//  计算相对于当前页面的偏移
 	long long offset = (long long)(targetAddress - g_pageBaseAddress);
 	if (offset < 0) return rcGrid;
 
@@ -974,8 +998,9 @@ void DrawBottomPane(HDC hdc, RECT rcClient) {
 		uintptr_t rowAddress = g_pageBaseAddress + (row * g_Metric.bytesPerRow);
 
 		// 批量读取整行，优化IO降低跨进程损耗
+		bool bSuccess;
 		unsigned char rowData[32] = { 0 };
-		MockReadProcessMemory(rowAddress, rowData, g_Metric.bytesPerRow);
+		bSuccess = MockReadProcessMemory(rowAddress, rowData, g_Metric.bytesPerRow);
 
 		// A. 绘制左侧地址栏
 		wchar_t szAddress[32];
@@ -1005,7 +1030,7 @@ void DrawBottomPane(HDC hdc, RECT rcClient) {
 			bool isSelected = g_Metric.hasSelection && (currentByteAddress >= minSel && currentByteAddress <= maxSel);
 
 			wchar_t szByte[4];
-			nt::swprintf(szByte, L"%02X", byteValue);
+			nt::swprintf(szByte, bSuccess ?  L"%02X" : L"??", byteValue);
 			RECT rcByte = { xHex, y, xHex + g_Metric.byteSizeNoChar, y + g_Metric.rowHeight };
 
 			wchar_t szChar[2] = { L'.', L'\0' };
@@ -1096,7 +1121,7 @@ void ActivateGhostEdit(HWND hWndParent, uintptr_t targetAddress, RECT rcPaneClie
 	::SetFocus(g_hGhostEdit);
 
 	// 选中所有文本方便直接覆盖输入
-	//::SendMessage(g_hGhostEdit, EM_SETSEL, -1, 0);
+	::SendMessage(g_hGhostEdit, EM_SETSEL, 0, -1);
 
 	// 刷新区域
 	::InvalidateRect(hWndParent, &rcPaneClient, FALSE);
@@ -1118,20 +1143,19 @@ LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 			::ShowWindow(hWnd, SW_HIDE);
 			::InvalidateRect(::GetParent(hWnd), NULL, FALSE);
 			return 0;
-		}
+		} 
 		break;
 
 	case WM_KILLFOCUS: // 核心锁：一旦失去焦点 (鼠标点击别处或敲回车)
 		if (g_Metric.isEditing) {
 			wchar_t szText[4] = { 0 };
-			::GetWindowText(hWnd, szText, 4);
+			::GetWindowTextW(hWnd, szText, 4);
 
 			// 字符串安全转回十六进制字节
-			
-			unsigned char newValue = (unsigned char)nt::hcc((const char *)szText);
+			unsigned char newValue = (unsigned char)nt::whcc(szText);
 
 			// 实际开发中在此处写回游戏内存
-			// MockWriteProcessMemory(g_Metric.editingAddress, &newValue, 1);
+			MockWriteProcessMemory(g_Metric.editingAddress, &newValue, 1);
 
 			// 彻底注销并重归黑暗
 			g_Metric.isEditing = false;

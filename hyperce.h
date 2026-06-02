@@ -8,7 +8,12 @@ struct HYPER_CE
 {
 	union {
 		struct {
-			HYPER_CALLER door; int dpi;
+			HYPER_CALLER door; 
+			HANDLE hProcessHandle;
+			INT (*ReadProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
+			INT (*WriteProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
+			
+			int dpi;
 			bool bOption1, bShowConsle, bMainWnd;
 			bool bCovering, bCapting;
 			DWORD targetId; POINT pt;
@@ -40,5 +45,5 @@ struct HYPER_CE
 	inline PHYPER_VMRD as_vmrd() { *(int*)this = 'VMRD'; return (PHYPER_VMRD)this; }
 }; static_assert(sizeof(HYPER_CE) == 0x8000, "! HYPER_CE");
 
-NX_G HYPER_CE* G; void debug_test();
+NX_G HYPER_CE* G; VOID debug_test(); VOID UI_MainWnd(); VOID UI_MainInit();
 #endif // 

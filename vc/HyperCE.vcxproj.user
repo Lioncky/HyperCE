@@ -11,8 +11,7 @@
     <RemoteDebuggerConnection>RemoteWithoutAuthentication</RemoteDebuggerConnection>
     <DeploymentDirectory>C:\HyperCE</DeploymentDirectory>
     <RemoteDebuggerDeployDebugCppRuntime>false</RemoteDebuggerDeployDebugCppRuntime>
-    <AdditionalFiles>
-    </AdditionalFiles>
+    <AdditionalFiles>D:\Cod\HyperDbg\hyperdbg\build\bin\release\hyperhv.dll;</AdditionalFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Dbg|x64'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
