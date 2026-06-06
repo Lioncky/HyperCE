@@ -33,27 +33,17 @@ struct HexViewMetrics {
 	HFONT hFont = NULL;
 };
 
-// ── 全局状态 ────────────────────────────────────────────────────
-extern HexViewMetrics g_Metric;
-extern HWND           g_hGhostEdit;
-extern WNDPROC        g_OldEditProc;
-extern HWND           g_hBottomScroll;
-extern uintptr_t      g_memoryMinAddress;
-extern uintptr_t      g_memoryMaxAddress;
-extern uintptr_t      g_pageBaseAddress;
-extern int            upperHeight;
-
-// ── 地址?滚动条位置换算 ─────────────────────────────────────────
+// ── 地址 滚动条位置换算 ─────────────────────────────────────────
 int       AddrToPos(uintptr_t addr);
 uintptr_t PosToAddr(int pos);
 
-// ── 坐标?地址换算 ───────────────────────────────────────────────
+// ── 坐标 地址换算 ───────────────────────────────────────────────
 uintptr_t GetAddressFromMouse(int mx, int my, uintptr_t pageBase);
 RECT      GetRectFromAddress(uintptr_t addr, RECT rcPane);
 
 // ── 内存读写（由外部实现替换） ───────────────────────────────────
-BOOL MockReadProcessMemory(uintptr_t addr, unsigned char* buf, size_t size);
-BOOL MockWriteProcessMemory(uintptr_t addr, unsigned char* buf, size_t size);
+BOOL MockReadProcessMemory(uintptr_t addr, void* buf, size_t size);
+BOOL MockWriteProcessMemory(uintptr_t addr, void* buf, size_t size);
 
 // ── UI 入口与布局 ────────────────────────────────────────────────
 int  ui_show_mmview(void*);

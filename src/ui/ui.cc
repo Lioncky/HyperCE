@@ -78,7 +78,12 @@ VOID UI_MainWnd()
 
 			Nt::QueryProcessPath((HANDLE)G->targetId, nt::tmp(), 256);
 
-			nt::lg("%d: %s", G->targetId, nt::tmp());
+			if (G->targetId == (DWORD)ntpid())
+				G->hProcessHandle = HPROC;
+			else
+				G->hProcessHandle = Nt::OpenProc((HANDLE)G->targetId, 2035711);
+
+			nt::lg("%d %X: %s", G->targetId, G->hProcessHandle, nt::tmp());
 			//DbgPrint("%s mouse released", nt::ltime());
 		}
 		else if (msg == WM_NCLBUTTONDOWN) {
@@ -180,13 +185,10 @@ VOID UI_MainWnd()
 	//Nt::AddTary(hwnd, *(DWORD*)&hIco | 0x80000000, WM_TRAYICON, TRAY_CAPTION);
 
 	MSG msg;
-	while (::GetMessageW(&msg, nullptr, 0, 0))
-	{
+	while (::GetMessageW(&msg, nullptr, 0, 0)) {
 		::TranslateMessage(&msg);
 		::DispatchMessageW(&msg);
-		ntsleep(10);
 	}
-
 }
 
 void ui_ShowTrayMenu(HWND hwnd)
@@ -230,6 +232,9 @@ VOID UI_MainInit() {
 			};
 			G->WriteProcessMemoryEx = [](LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize) -> INT {
 				return Nt::ProtectWrite(G->hProcessHandle, (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
+			};
+			G->QueryVirtualMemoryEx = [](LPCVOID lpBaseAddress, MEMORY_BASIC_INFORMATION* _) -> INT {
+				return Nt::NtQuery(G->hProcessHandle, (char*)lpBaseAddress, _);
 			};
 		}
 	}

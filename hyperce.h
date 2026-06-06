@@ -12,6 +12,7 @@ struct HYPER_CE
 			HANDLE hProcessHandle;
 			INT (*ReadProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
 			INT (*WriteProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
+			INT (*QueryVirtualMemoryEx)(LPCVOID lpBaseAddress, MEMORY_BASIC_INFORMATION* lpBuffer);
 			
 			int dpi;
 			bool bOption1, bShowConsle, bMainWnd;
@@ -32,6 +33,8 @@ struct HYPER_CE
 			HWND hHeader;
 			HWND hListView;
 			HWND hStatusBar;
+			HWND hStatusEdit;
+			HWND hStatusBtn;
 		};
 		BYTE ___[0x1000];
 	};

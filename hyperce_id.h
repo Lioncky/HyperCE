@@ -15,5 +15,8 @@
 # define ID_MENU_CK1 2011
 # define ID_MENU_CK2 2012
 
+#define IDC_STATUS_EDIT 6000
+#define IDC_STATUS_BTN 6001
+
 # define WM_TRAYICON (/*WM_USER*/0x400 + 1)
 #endif // 

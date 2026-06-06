@@ -34,10 +34,10 @@ uintptr_t PosToAddr(int pos) {
 // ============================================================================
 // 二、内存读写
 // ============================================================================
-BOOL MockWriteProcessMemory(uintptr_t addr, unsigned char* buf, size_t size) {
+BOOL MockWriteProcessMemory(uintptr_t addr, void* buf, size_t size) {
 	return G->WriteProcessMemoryEx((char*)addr, buf, size) ? TRUE : FALSE;
 }
-BOOL MockReadProcessMemory(uintptr_t addr, unsigned char* buf, size_t size) {
+BOOL MockReadProcessMemory(uintptr_t addr, void* buf, size_t size) {
 	return G->ReadProcessMemoryEx((char*)addr, buf, size) ? TRUE : FALSE;
 }
 
@@ -175,6 +175,23 @@ void LayoutControls(HWND hwnd) {
 	rcBottomPane = { rc.left, rc.top + upperHeight + SPLITTER_HEIGHT,
 					 rc.right, rc.bottom - statusH };
 
+	// Edit 和 Button 在 hStatusBar 客户区内定位（父窗口是 hStatusBar）
+	if (G->hStatusEdit && G->hStatusBtn && G->hStatusBar) {
+		RECT rsb; GetClientRect(G->hStatusBar, &rsb);
+		const int btnW = G->get_dpi_mul(32);
+		const int editW = G->get_dpi_mul(160);
+		const int pad = G->get_dpi_mul(3);
+		const int ctrlH = rsb.bottom - pad * 2;
+		const int ctrlY = pad;
+
+		MoveWindow(G->hStatusBtn,
+			rsb.right - btnW - pad, ctrlY,
+			btnW, ctrlH, TRUE);
+		MoveWindow(G->hStatusEdit,
+			rsb.right - btnW - editW - pad * 2, ctrlY,
+			editW, ctrlH, TRUE);
+	}
+
 	if (g_hBottomScroll) {
 		int sbW = G->get_dpi_mul(18);
 		int sbH = rcBottomPane.bottom - rcBottomPane.top;
@@ -235,6 +252,51 @@ void ActivateGhostEdit(HWND hParent, uintptr_t addr, RECT rcPane) {
 // ============================================================================
 // 八、WM_CREATE
 // ============================================================================
+
+static BOOL on_wm_drawitem(LPDRAWITEMSTRUCT di) {
+	if (di->hwndItem == G->hStatusBtn) {
+		HDC  hdc = di->hDC;
+
+		RECT rect = di->rcItem;
+		bool pressed = (di->itemState & ODS_SELECTED) != 0;
+		bool hot = (di->itemState & ODS_HOTLIGHT) != 0;
+		COLORREF bg = pressed ? RGB(0x25, 0x25, 0x25)
+			: hot ? RGB(0x60, 0x60, 0x60)
+			: RGB(0x32, 0x32, 0x32);
+
+		FillRect(hdc, &rect, (HBRUSH)nt::darkbrush());
+
+		// 边框
+		COLORREF border = RGB(0x70, 0x70, 0x70);
+		HPEN hPen = CreatePen(PS_SOLID, 1, border);
+		HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
+		HBRUSH hOldBr = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+		Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+		SelectObject(hdc, hOldPen); SelectObject(hdc, hOldBr); DeleteObject(hPen);
+		// 文字：用 Segoe UI Symbol 保证箭头字符可见
+		if (pressed) OffsetRect(&rect, 1, 1);
+		SetBkMode(hdc, TRANSPARENT);
+		SetTextColor(hdc, RGB(220, 220, 220));
+		SelectObject(hdc, g_Metric.hFont);
+		DrawText(hdc, L"→", -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		return TRUE;
+	}
+
+	if (di->hwndItem == G->hStatusBar) {
+
+		HDC  hdc = di->hDC;
+		RECT rect = di->rcItem;
+		SelectClipRgn(hdc, NULL);
+		rect.left -= 2; rect.top -= 2; rect.right += 2; rect.bottom += 2;
+		FillRect(hdc, &rect, (HBRUSH)nt::darkbrush());
+		SetBkMode(hdc, TRANSPARENT);
+		SetTextColor(hdc, RGB(255, 255, 255));
+		rect.left += 5;
+		DrawText(hdc, (wchar_t*)di->itemData, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+		return TRUE;
+	}
+	return FALSE;
+}
 static void on_wm_create(HWND hwnd) {
 	Nt::EnableDarkModeDwm(hwnd);
 
@@ -337,6 +399,29 @@ static void on_wm_create(HWND hwnd) {
 		WS_CHILD | WS_VISIBLE,
 		0, 0, 0, 0, hwnd, NULL, NtCurrentImageBase(), NULL);
 	SendMessageW(G->hStatusBar, SB_SETTEXT, 0 | SBT_OWNERDRAW, (LPARAM)L"就绪");
+
+	// Edit 和 Button 作为状态栏的子控件，天然在状态栏内部，无 Z-order 问题
+	G->hStatusEdit = CreateWindowExW(
+		0, L"EDIT", L"",
+		WS_CHILD | WS_VISIBLE | WS_BORDER | ES_UPPERCASE | ES_AUTOHSCROLL,
+		0, 0, 0, 0, G->hStatusBar, (HMENU)IDC_STATUS_EDIT, NtCurrentImageBase(), NULL);
+	SendMessage(G->hStatusEdit, WM_SETFONT, (WPARAM)g_Metric.hFont, TRUE);
+
+	G->hStatusBtn = CreateWindowExW(
+		0, L"BUTTON", L"→",
+		WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+		0, 0, 0, 0, G->hStatusBar, (HMENU)IDC_STATUS_BTN, NtCurrentImageBase(), NULL);
+	SendMessage(G->hStatusBtn, WM_SETFONT, (WPARAM)g_Metric.hFont, TRUE);
+
+	// 子类化状态栏：只转发 Edit 相关消息
+	SetWindowSubclass(G->hStatusBar, [](HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) -> LRESULT {
+		if (uMsg == WM_COMMAND || uMsg == WM_CTLCOLOREDIT || 
+			(uMsg == WM_DRAWITEM && LPDRAWITEMSTRUCT(lParam)->hwndItem == G->hStatusBtn)
+			)
+			return SendMessage(GetParent(hWnd), uMsg, wParam, lParam);
+
+		return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+	}, 1, 0);
 }
 
 // ============================================================================
@@ -368,18 +453,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 
 	case WM_DRAWITEM: {
-		auto* di = (LPDRAWITEMSTRUCT)lParam;
-		if (di->hwndItem != G->hStatusBar) break;
-		HDC  hdc = di->hDC;
-		RECT rect = di->rcItem;
-		SelectClipRgn(hdc, NULL);
-		rect.left -= 2; rect.top -= 2; rect.right += 2; rect.bottom += 2;
-		FillRect(hdc, &rect, (HBRUSH)nt::darkbrush());
-		SetBkMode(hdc, TRANSPARENT);
-		SetTextColor(hdc, RGB(255, 255, 255));
-		rect.left += 5;
-		DrawText(hdc, (wchar_t*)di->itemData, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-		return TRUE;
+		if (on_wm_drawitem((LPDRAWITEMSTRUCT)lParam))
+			return TRUE;
+		break;
 	}
 
 	case WM_NOTIFY: {
@@ -473,6 +549,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			SetTextColor((HDC)wParam, RGB(255, 255, 255));
 			return (INT_PTR)nt::darkbrush();
 		}
+		if ((HWND)lParam == G->hStatusEdit) {
+			SetBkColor((HDC)wParam, RGB(0x30, 0x30, 0x30));
+			SetTextColor((HDC)wParam, RGB(255, 255, 255));
+			return (INT_PTR)nt::darkbrush();
+		}
 		break;
 
 	case WM_VSCROLL:
@@ -511,9 +592,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		if (y > upperHeight && y < upperHeight + SPLITTER_HEIGHT) {
 			G->draggingSplitter = true;
 			SetCapture(hwnd);
+			break;
 		}
 		if (::PtInRect(&rcBottomPane, { x, y })) {
-			if (g_Metric.isEditing) ::SetFocus(hwnd);
+			// 只有幽灵Edit正在编辑时才踢焦点，不影响状态栏上的输入框
+			if (g_Metric.isEditing && ::GetFocus() == g_hGhostEdit)
+				::SetFocus(hwnd);
 			uintptr_t a = GetAddressFromMouse(x, y - rcBottomPane.top, g_pageBaseAddress);
 			if (a) {
 				g_Metric.hasSelection = true;
@@ -523,6 +607,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 				::InvalidateRect(hwnd, &rcBottomPane, FALSE);
 			}
 		}
+		break;
+	}
+	case WM_RBUTTONDOWN: {
 		break;
 	}
 
@@ -556,6 +643,35 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (g_Metric.selectionStart == g_Metric.selectionEnd) {
 				g_Metric.hasSelection = false;
 				ActivateGhostEdit(hwnd, g_Metric.selectionStart, rcBottomPane);
+
+				long long addr = 0;
+				if (MockReadProcessMemory(g_Metric.selectionStart, &addr, 8)) {
+
+					SetStateText("%p %d(%02X) %d(%04X) %d(%X) %lld(%llX) f %s db %s",
+						g_Metric.selectionStart,
+						(int)*(char*)&addr, *(unsigned char*)&addr,
+						(int)*(short*)&addr, *(unsigned short*)&addr,
+						*(int*)&addr, *(unsigned*)&addr,
+						addr, addr,
+						nt::fss(*(float*)&addr), nt::fss(*(double*)&addr)
+					);
+				}
+			}
+			else {
+				MEMORY_BASIC_INFORMATION mbi;
+				if (G->QueryVirtualMemoryEx((PVOID)g_Metric.selectionStart, &mbi)) {
+					auto size = (int)(intptr_t)(g_Metric.selectionStart - g_Metric.selectionEnd);
+					if (size < 0) size = -size;
+
+					SetStateText("SELECT %p~%p(%d bytes) in %llX(0x%X-%s%s%s)",
+						g_Metric.selectionStart,
+						g_Metric.selectionEnd, size,
+						mbi.BaseAddress, mbi.RegionSize,
+						(mbi.Protect & 0xEE) ? "R" : "",
+						(mbi.Protect & 0xCC) ? "W" : "",
+						(mbi.Protect & 0xF0) ? "E" : ""
+					);
+				}
 			}
 		}
 		break;
@@ -571,6 +687,38 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	}
 
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDC_STATUS_EDIT && HIWORD(wParam) == EN_CHANGE) {
+			// on_status_edit_change((HWND)lParam);
+		}
+		if (LOWORD(wParam) == IDC_STATUS_BTN) {
+			wchar_t szAddr[32] = {};
+			GetWindowTextW(G->hStatusEdit, szAddr, 32);
+			uintptr_t addr = 0;
+			// 解析十六进制地址（兼容带 0x 前缀）
+			wchar_t* p = szAddr;
+			if (p[0] == L'0' && (p[1] == L'x' || p[1] == L'X')) p += 2;
+			for (; *p; ++p) {
+				wchar_t c = *p;
+				int d = (c >= L'0' && c <= L'9') ? c - L'0'
+					: (c >= L'A' && c <= L'F') ? c - L'A' + 10
+					: (c >= L'a' && c <= L'f') ? c - L'a' + 10 : -1;
+				if (d < 0) break;
+				addr = addr * 16 + d;
+			}
+			if (addr) {
+				// 16 字节对齐后设为页面基址
+				g_pageBaseAddress = (addr / 16) * 16;
+				g_pageBaseAddress = emin(emax(g_pageBaseAddress, g_memoryMinAddress), g_memoryMaxAddress);
+
+				SCROLLINFO si = { sizeof(si), SIF_POS, 0, 0, 0, AddrToPos(g_pageBaseAddress) };
+				::SetScrollInfo(g_hBottomScroll, SB_CTL, &si, TRUE);
+
+				::InvalidateRect(hwnd, &rcBottomPane, FALSE);
+				SetStateText("跳转到 %llX", (long long)g_pageBaseAddress);
+			}
+		}
+		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		break;
@@ -613,7 +761,7 @@ LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 				::SendMessage(g_hGhostEdit, EM_SETSEL, 0, 0);
 				return 0;
 			}
-			return 0;
+			break;
 		}
 
 		case VK_UP: case VK_DOWN: {
@@ -679,7 +827,8 @@ LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 		}
 		break;
 
-	case WM_KILLFOCUS:
+	case WM_KILLFOCUS: {
+		// 焦点转移到状态栏的地址框或按钮时，不触发存盘隐藏
 		if (g_Metric.isEditing) {
 			wchar_t szText[4] = {};
 			::GetWindowTextW(hWnd, szText, 4);
@@ -691,6 +840,7 @@ LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 			::InvalidateRect(::GetParent(hWnd), NULL, FALSE);
 		}
 		break;
+		}
 	}
 
 	return ::CallWindowProc(g_OldEditProc, hWnd, uMsg, wParam, lParam);
