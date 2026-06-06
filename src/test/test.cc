@@ -7,6 +7,8 @@
 // 正式发布时会被自动删除
 void debug_test() {
 
+	nt::lg("[debug_test] CALLED!");
+	//nt::exit();
 }
 
 //  [5/28/2026 Administrator]

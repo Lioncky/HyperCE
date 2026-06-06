@@ -22,6 +22,9 @@
     <ClCompile Include="..\src\ui\vw_mem_ghostedit.cc">
       <Filter>ui</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\ui\vw_input_address_box.cc">
+      <Filter>ui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="src">

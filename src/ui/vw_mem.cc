@@ -605,11 +605,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		if ((HWND)lParam == g_hGhostEdit)
 		{
 			// 设置文字的背景颜色，使其与控件背景一致
-			SetBkColor(hdcStatic, RGB(0x20, 0x20, 0x20));
+			SetBkColor(hdcStatic, RGB(0, 120, 215)); // 蓝色底色
+			//SetBkColor(hdcStatic, RGB(0x20, 0x20, 0x20));
 
-			//SetTextColor(hdcStatic, RGB(255, 255, 255)); // 白色
-			SetTextColor(hdcStatic, RGB(0, 0x7F, 0)); // 绿色渲染
-
+			SetTextColor(hdcStatic, RGB(255, 255, 255)); // 白色
+			//SetTextColor(hdcStatic, RGB(0, 0x7F, 0)); // 绿色渲染
+			
 			// 返回背景画刷，系统会自动用它涂抹背景
 			return (INT_PTR)nt::darkbrush();
 		}
@@ -1004,7 +1005,7 @@ void DrawBottomPane(HDC hdc, RECT rcClient) {
 
 		// A. 绘制左侧地址栏
 		wchar_t szAddress[32];
-		nt::swprintf(szAddress, L"%08I64X", (long long)rowAddress);
+		nt::swprintf(szAddress, L"%llX", (long long)rowAddress);
 		SetTextColor(hMemDC, RGB(255, 255, 255));
 		RECT rcAddress = { 10, y, g_Metric.addressWidth, y + g_Metric.rowHeight };
 		DrawText(hMemDC, szAddress, -1, &rcAddress, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
@@ -1104,7 +1105,7 @@ void ActivateGhostEdit(HWND hWndParent, uintptr_t targetAddress, RECT rcPaneClie
 	::MoveWindow(g_hGhostEdit,
 		rcEdit.left - 2,
 		rcEdit.top + 1,
-		(rcEdit.right - rcEdit.left) + 4,
+		(rcEdit.right - rcEdit.left) - 4,
 		(rcEdit.bottom - rcEdit.top) - 2,
 		TRUE);
 
@@ -1116,12 +1117,13 @@ void ActivateGhostEdit(HWND hWndParent, uintptr_t targetAddress, RECT rcPaneClie
 	nt::swprintf(szByte, L"%02X", currentByte);
 
 	::SetWindowTextW(g_hGhostEdit, szByte);
-	::SendMessage(g_hGhostEdit, EM_LIMITTEXT, 2, 0);
+	::SendMessageW(g_hGhostEdit, EM_LIMITTEXT, 2, 0); // 长度
 	::ShowWindow(g_hGhostEdit, SW_SHOW);
 	::SetFocus(g_hGhostEdit);
 
 	// 选中所有文本方便直接覆盖输入
-	::SendMessage(g_hGhostEdit, EM_SETSEL, 0, -1);
+	//::SendMessage(g_hGhostEdit, EM_SETSEL, 0, -1);
+	::SendMessage(g_hGhostEdit, EM_SETSEL, -1, -1);
 
 	// 刷新区域
 	::InvalidateRect(hWndParent, &rcPaneClient, FALSE);
@@ -1132,21 +1134,154 @@ void ActivateGhostEdit(HWND hWndParent, uintptr_t targetAddress, RECT rcPaneClie
 // ============================================================================
 LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
+
 	case WM_KEYDOWN:
-		if (wParam == VK_RETURN) { // 敲击回车
+		switch (wParam)
+		{
+		case VK_RETURN:{ // 敲击回车
 			HWND hParent = ::GetParent(hWnd);
 			::SetFocus(hParent); // 强踢焦点，由下方的 KILLFOCUS 统一触发存盘逻辑
 			return 0;
 		}
-		if (wParam == VK_ESCAPE) { // 敲击 ESC 放弃修改
+		case VK_ESCAPE:{ // 敲击 ESC 放弃修改
 			g_Metric.isEditing = false;
 			::ShowWindow(hWnd, SW_HIDE);
 			::InvalidateRect(::GetParent(hWnd), NULL, FALSE);
 			return 0;
+		}
+
+		case VK_LEFT:	case VK_RIGHT: {
+
+			// 上下箭头切换编辑行
+			int sel;
+
+			::SendMessageW(g_hGhostEdit, EM_GETSEL, (WPARAM)&sel, NULL);
+			if (sel == 1)
+				break;
+
+			if (sel == 0)
+				if (wParam == VK_RIGHT)
+					break;
+				else {
+
+					ActivateGhostEdit(hWnd, --g_Metric.selectionStart, rcBottomPane);
+
+					::SendMessage(g_hGhostEdit, EM_SETSEL, 2, 2);
+					return 0;
+
+				}
+			
+			if (sel == 2)
+				if (wParam == VK_LEFT)
+					break;
+				else {
+
+					ActivateGhostEdit(hWnd, ++g_Metric.selectionStart, rcBottomPane);
+
+					::SendMessage(g_hGhostEdit, EM_SETSEL, 0, 0);
+					return 0;
+
+				}
+			
+			return 0;
+		}
+		case VK_UP:	case VK_DOWN: {
+			// 上下箭头切换编辑行
+			int sel, offset = ((wParam == VK_UP) ? -16 : 16) << 1; // 每行 16 字节
+			uintptr_t newAddress = g_Metric.editingAddress += offset;
+			g_Metric.selectionStart += offset;
+
+			::SendMessageW(g_hGhostEdit, EM_GETSEL, (WPARAM)&sel, NULL);
+
+			// 可以在这里添加地址边界检查
+			ActivateGhostEdit(::GetParent(hWnd), newAddress, rcBottomPane);
+
+			// setsel
+			::SendMessageW(g_hGhostEdit, EM_SETSEL, sel, sel); // 保持光标位置不变
+			return 0;
+		}
+		case '0':	case '5': case VK_NUMPAD0:	case VK_NUMPAD5: case 'A':
+		case '1':	case '6': case VK_NUMPAD1:	case VK_NUMPAD6: case 'B':
+		case '2':	case '7': case VK_NUMPAD2:	case VK_NUMPAD7: case 'C':
+		case '3':	case '8': case VK_NUMPAD3:	case VK_NUMPAD8: case 'D':
+		case '4':	case '9': case VK_NUMPAD4:	case VK_NUMPAD9: case 'E': case 'F': {
+			if (wParam >= VK_NUMPAD0 && wParam <= VK_NUMPAD9)
+				wParam = wParam - 0x30; // 数字小键盘转换为字符
+
+			int b = 0, sel; wchar_t szText[4] = { 0 };
+			::SendMessageW(g_hGhostEdit, EM_GETSEL, (WPARAM)&sel, NULL);
+
+			if (sel == 2) {
+				// 先跳到下一个格子
+				ActivateGhostEdit(hWnd, ++g_Metric.selectionStart, rcBottomPane);
+
+				// 把这次按键转发给新激活的格子（g_hGhostEdit 已更新）
+				::SendMessageW(g_hGhostEdit, WM_KEYDOWN, wParam, lParam);
+
+				// 吃掉本次 WM_CHAR，防止旧 Edit 收到它发出警告音
+				MSG msg;
+				::PeekMessageW(&msg, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
+
+				// 
+				::SendMessage(g_hGhostEdit, EM_SETSEL, -1, 0);
+
+				wParam = 0;
+				return 0;
+			}
+
+			::GetWindowTextW(hWnd, szText, 4);
+			if (sel == 0) {
+				if (szText[0] != (wchar_t)wParam) {
+
+					szText[0] = (wchar_t)wParam;
+					::SetWindowTextW(hWnd, szText);
+
+					b = 1;
+				}
+				::SendMessageW(g_hGhostEdit, EM_SETSEL, 1, 0);
+
+			}
+			else {
+				if (szText[1] != (wchar_t)wParam) {
+					szText[1] = (wchar_t)wParam;
+					::SetWindowTextW(hWnd, szText);
+
+					b = 1;
+				}
+				::SendMessage(g_hGhostEdit, EM_SETSEL, -1, 0);
+				//::SendMessageW(g_hGhostEdit, EM_SETSEL, 0, 0);
+
+			}
+
+			if (b) {
+				auto newValue = (unsigned char)nt::whcc(szText);
+
+				// 实际开发中在此处写回内存
+				MockWriteProcessMemory(g_Metric.editingAddress, &newValue, 1);
+
+			}
+			if (sel == 1) {
+
+				ActivateGhostEdit(hWnd, ++g_Metric.selectionStart, rcBottomPane);
+
+				MSG msg;
+				::PeekMessageW(&msg, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
+
+			}
+
+			wParam = 0;
+			//return ::CallWindowProc(g_OldEditProc, hWnd, WM_KEYDOWN, VK_NONAME, lParam);
+			return 1;
+		}
+
+		default:
+			break;
 		} 
 		break;
 
 	case WM_KILLFOCUS: // 核心锁：一旦失去焦点 (鼠标点击别处或敲回车)
+		//DAS("WM_KILLFOCUS %d", g_Metric.isEditing);
+
 		if (g_Metric.isEditing) {
 			wchar_t szText[4] = { 0 };
 			::GetWindowTextW(hWnd, szText, 4);
