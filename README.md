@@ -11,12 +11,18 @@
 > Click the title menu icon and drag to the target program window to attach.
 
 ## Feather
-- [x] 0. Dark Theme Support
-- [x] 1. Target Process Dragger
-2. EPT hook with lua script 
-3. EIP Tracer
-4. Spec scanner
-5. Library Injector		
-6. Memory Allocator
-7. Memory Viewer like CE
-8. Hide debugger from all process
+- [x] 0. Target Process Dragger
+- [x] 1. Full Dark Mode Support
+- [x] 2. Memory Viewer like Cheat Engine 60%
+- [x] 3. Address Jumper & Status Bar
+- [ ] 4. Library Injector	Dragger
+- [ ] 5. Spec scanner
+- [ ] 6. Memory Allocator
+- [ ] 7. Hide debugger from all process
+- [ ] 8. EIP Tracer
+- [ ] 9. EPT hook with lua script 
+- [ ] 10. VM pass through RW
+- [ ] 11. Debug Single Step 
+- [ ] 12. EPT TABLE HIDE
+- [ ] 13. ANDROID SUPPORT
+- [ ] 

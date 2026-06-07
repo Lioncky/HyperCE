@@ -3,8 +3,19 @@
 #include <CommCtrl.h>
 //#include <ShellScalingApi.h>
 VOID ui_ShowTrayMenu(HWND);
-VOID ui_on_create(HWND hWnd) {
+
+#include <vsstyle.h>
+
+HMENU CreateAppMenu();
+void ui_on_create(HWND hWnd)
+{
 	DAS("!ui_on_create");
+
+	// init dark mode theme data for menu
+	nt::darkmenu_theme() = Nt::UxOpenThemeData(hWnd, L"Menu");
+
+	// set current system menu
+	::SetMenu(hWnd, CreateAppMenu());
 
 }
 
@@ -26,13 +37,6 @@ VOID UI_MainWnd()
 				Nt::ShowWindowU32(hwnd, G->bMainWnd);
 				return 0ll;
 
-				//if (!G->bMainWnd) {
-				//	Nt::ShowWindowU32(hwnd, FALSE);
-				//}
-				//else {
-				//	Nt::GetCursorPosU32(&G->pt); // 
-				//	Nt::SetWindowPosU32(hwnd, HWND_TOPMOST, G->pt.x-20-800, G->pt.y-50 - 600, 80+800, 20+600, SWP_SHOWWINDOW);
-				//}
 			}
 
 			// Open Context Menu
@@ -47,6 +51,38 @@ VOID UI_MainWnd()
 			G->bMainWnd = FALSE;
 			Nt::ShowWindowU32(hwnd, FALSE);
 		}
+		
+		#if 1 // DARK MODE MENU
+		else if (msg == WM_UAHDRAWMENUITEM) {
+
+			if (!G->bDarkMode)
+				goto _DEF;
+
+			extern long long ON_WM_UAHDRAWMENUITEM(UAHDRAWMENUITEM*);
+			return ON_WM_UAHDRAWMENUITEM((UAHDRAWMENUITEM*)lParam);
+		}
+
+		else if (msg == WM_UAHDRAWMENU) {
+			if (!G->bDarkMode)
+				goto _DEF;
+
+			RECT rcMenu, rcWindow;
+			auto* drawingInfo = (UAHMENU*)lParam;
+			MENUBARINFO menuBarInfo{ sizeof(menuBarInfo) };
+			if (!GetMenuBarInfo(hwnd, OBJID_MENU, 0, &menuBarInfo))
+				return 0ll;
+
+			if (!GetWindowRect(hwnd, &rcWindow))
+				return 0ll;
+
+			rcMenu = menuBarInfo.rcBar;
+			if (!OffsetRect(&rcMenu, -rcWindow.left, -rcWindow.top))
+				return 0ll;
+
+			FillRect(drawingInfo->hdc, &rcMenu, (HBRUSH)nt::darkbrush());
+			return 1ll;
+		}
+		#endif
 
 		else if (msg == WM_DROPFILES)
 		{
@@ -74,16 +110,17 @@ VOID UI_MainWnd()
 
 			Nt::GetCursorPosU32(&G->pt);
 
-			G->targetId = Nt::WndToPid(Nt::PosToWnd(&G->pt));
+			HANDLE pid  = (HANDLE)Nt::WndToPid(Nt::PosToWnd(&G->pt));
+			
+			Nt::QueryProcessPath(pid, nt::tmp(), 256);
 
-			Nt::QueryProcessPath((HANDLE)G->targetId, nt::tmp(), 256);
-
-			if (G->targetId == (DWORD)ntpid())
+			if (pid == ntpid())
 				G->hProcessHandle = HPROC;
 			else
-				G->hProcessHandle = Nt::OpenProc((HANDLE)G->targetId, 2035711);
+				G->hProcessHandle = Nt::OpenProc(pid, 2035711);
 
-			nt::lg("%d %X: %s", G->targetId, G->hProcessHandle, nt::tmp());
+			G->targetId = (UINT)(INT_PTR)pid;
+			nt::lg("PID: %d %X HANDLE:%d %s", pid, pid, G->hProcessHandle, nt::tmp());
 			//DbgPrint("%s mouse released", nt::ltime());
 		}
 		else if (msg == WM_NCLBUTTONDOWN) {
@@ -239,3 +276,117 @@ VOID UI_MainInit() {
 		}
 	}
 }
+
+HMENU CreateAppMenu()
+{
+	HMENU hMenuBar = CreateMenu();
+
+	// ── 文件(F) ──────────────────────────────
+	HMENU hFile = CreatePopupMenu();
+	AppendMenuW(hFile, MF_STRING, IDM_FILE_NEW, L"新建(&N)\tCtrl+N");
+	AppendMenuW(hFile, MF_STRING, IDM_FILE_OPEN, L"打开(&O)...\tCtrl+O");
+	AppendMenuW(hFile, MF_STRING, IDM_FILE_SAVE, L"保存(&S)\tCtrl+S");
+	AppendMenuW(hFile, MF_STRING, IDM_FILE_SAVE_AS, L"另存为(&A)...");
+	AppendMenuW(hFile, MF_SEPARATOR, 0, nullptr);
+	AppendMenuW(hFile, MF_STRING, IDM_FILE_EXIT, L"退出(&X)\tAlt+F4");
+	AppendMenuW(hMenuBar, MF_POPUP, (UINT_PTR)hFile, L"文件(&F)");
+
+	// ── 编辑(E) ──────────────────────────────
+	HMENU hEdit = CreatePopupMenu();
+	AppendMenuW(hEdit, MF_STRING, IDM_EDIT_UNDO, L"撤销(&Z)\tCtrl+Z");
+	AppendMenuW(hEdit, MF_STRING, IDM_EDIT_REDO, L"重做(&Y)\tCtrl+Y");
+	AppendMenuW(hEdit, MF_SEPARATOR, 0, nullptr);
+	AppendMenuW(hEdit, MF_STRING, IDM_EDIT_CUT, L"剪切(&T)\tCtrl+X");
+	AppendMenuW(hEdit, MF_STRING, IDM_EDIT_COPY, L"复制(&C)\tCtrl+C");
+	AppendMenuW(hEdit, MF_STRING, IDM_EDIT_PASTE, L"粘贴(&P)\tCtrl+V");
+	AppendMenuW(hEdit, MF_SEPARATOR, 0, nullptr);
+	AppendMenuW(hEdit, MF_STRING, IDM_EDIT_SELECT_ALL, L"全选(&A)\tCtrl+A");
+	AppendMenuW(hMenuBar, MF_POPUP, (UINT_PTR)hEdit, L"编辑(&E)");
+
+	// ── 帮助(H) ──────────────────────────────
+	HMENU hHelp = CreatePopupMenu();
+	AppendMenuW(hHelp, MF_STRING, IDM_HELP_DOCS, L"文档(&D)\tF1");
+	AppendMenuW(hHelp, MF_SEPARATOR, 0, nullptr);
+	AppendMenuW(hHelp, MF_STRING, IDM_HELP_ABOUT, L"关于(&A)...");
+	AppendMenuW(hMenuBar, MF_POPUP, (UINT_PTR)hHelp, L"帮助(&H)");
+
+	return hMenuBar;
+}
+
+long long ON_WM_UAHDRAWMENUITEM(UAHDRAWMENUITEM* drawingInfo) {
+
+
+	//Get the menu item string
+	wchar_t menuString[256]{};
+	MENUITEMINFO itemInfo{ sizeof(itemInfo), MIIM_STRING };
+	itemInfo.dwTypeData = menuString;
+	itemInfo.cch = (sizeof(menuString) / sizeof(wchar_t)) - 1;
+
+	if (!GetMenuItemInfoW(drawingInfo->um.hMenu, drawingInfo->umi.iPosition, TRUE, &itemInfo))
+		return 0ll;
+	menuString[255] = L'\0';
+
+	//Get the item state for drawing
+	DWORD dwFlags = DT_CENTER | DT_SINGLELINE | DT_VCENTER;
+	int iTextStateID = 0;
+
+	if ((drawingInfo->dis.itemState & ODS_INACTIVE) || (drawingInfo->dis.itemState & ODS_DEFAULT))
+		iTextStateID = MBI_NORMAL;
+	else if (drawingInfo->dis.itemState & ODS_HOTLIGHT)
+		iTextStateID = MBI_HOT;
+	else if (drawingInfo->dis.itemState & ODS_SELECTED)
+		iTextStateID = MBI_PUSHED;
+	else if ((drawingInfo->dis.itemState & ODS_GRAYED) || (drawingInfo->dis.itemState & ODS_DISABLED))
+		iTextStateID = MBI_DISABLED;
+
+	//if (GetForegroundWindow() != hwnd)
+	//	iTextStateID = MBI_DISABLED;
+
+	constexpr COLORREF DARK_MENU_ITEM_FOREGROUND = 0xFFFFFF;
+	constexpr COLORREF DARK_MENU_ITEM_FOREGROUND_DISABLED = 0xAAAAAA;
+
+	const HBRUSH* hBrBackground = (HBRUSH*)&nt::l->DrakBrush;
+	if (drawingInfo->dis.itemState & ODS_HOTLIGHT)
+		hBrBackground = (HBRUSH*)&nt::l->DrakHoverBrush;
+	else if (drawingInfo->dis.itemState & ODS_SELECTED)
+		hBrBackground = (HBRUSH*)&nt::l->DrakSelectBrush;
+
+	if (drawingInfo->dis.itemState & ODS_NOACCEL)
+		dwFlags |= DT_HIDEPREFIX;
+
+
+	constexpr int _DTT_TEXTCOLOR = (1UL << 0);
+	const DTTOPTS_NS textOptions{ sizeof(textOptions), _DTT_TEXTCOLOR, iTextStateID != MBI_DISABLED ? DARK_MENU_ITEM_FOREGROUND : DARK_MENU_ITEM_FOREGROUND_DISABLED };
+	FillRect(drawingInfo->um.hdc, &drawingInfo->dis.rcItem, *hBrBackground);
+
+	// isMdiCaptionButton
+	if (*menuString == L'\0')
+	{
+		int offset = GetMenuItemCount(drawingInfo->um.hMenu) - drawingInfo->umi.iPosition;
+
+		wchar_t glyph;
+		if (drawingInfo->umi.iPosition == 0)
+			glyph = L'\ue700'; //Menu icon
+		else if (offset == 3)
+			glyph = L'\ue921'; //Minimize icon
+		else if (offset == 2)
+			glyph = L'\ue923'; //Maximize icon
+		else if (offset == 1)
+			glyph = L'\ue8bb'; //Close icon
+		else
+			return 0ll;
+
+		HRESULT hResult = Nt::UxDrawThemeTextEx(nt::darkmenu_theme(), drawingInfo->um.hdc, MENU_BARITEM, MBI_NORMAL, &glyph, 1, dwFlags, &drawingInfo->dis.rcItem, &textOptions);
+		if (FAILED(hResult))
+			return  0ll;
+
+		return 1ll;
+	}
+
+	HRESULT hResult = Nt::UxDrawThemeTextEx(nt::darkmenu_theme(), drawingInfo->um.hdc, MENU_BARITEM, MBI_NORMAL, menuString, itemInfo.cch, dwFlags, &drawingInfo->dis.rcItem, &textOptions);
+	if (FAILED(hResult))
+		return  0ll;
+
+	return 1ll;
+}
+			

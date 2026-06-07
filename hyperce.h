@@ -15,7 +15,7 @@ struct HYPER_CE
 			INT (*QueryVirtualMemoryEx)(LPCVOID lpBaseAddress, MEMORY_BASIC_INFORMATION* lpBuffer);
 			
 			int dpi;
-			bool bOption1, bShowConsle, bMainWnd;
+			bool bDarkMode, bOption1, bShowConsle, bMainWnd;
 			bool bCovering, bCapting;
 			DWORD targetId; POINT pt;
 			HANDLE exeIcon, cursor, bakcur;

@@ -35,10 +35,10 @@ uintptr_t PosToAddr(int pos) {
 // 二、内存读写
 // ============================================================================
 BOOL MockWriteProcessMemory(uintptr_t addr, void* buf, size_t size) {
-	return G->WriteProcessMemoryEx((char*)addr, buf, size) ? TRUE : FALSE;
+	return G->WriteProcessMemoryEx((char*)addr, buf, (UINT)size) ? TRUE : FALSE;
 }
 BOOL MockReadProcessMemory(uintptr_t addr, void* buf, size_t size) {
-	return G->ReadProcessMemoryEx((char*)addr, buf, size) ? TRUE : FALSE;
+	return G->ReadProcessMemoryEx((char*)addr, buf, (UINT)size) ? TRUE : FALSE;
 }
 
 // ============================================================================
@@ -464,7 +464,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 		if (hdr->code == LVN_ITEMCHANGED) {
 			SetStateText("选中：第 %d 行", ((LPNMLISTVIEW)lParam)->iItem);
-			InvalidateRect(hwnd, NULL, TRUE);
 		}
 		else if (hdr->code == LVN_GETDISPINFO) {
 			auto* pdi = (NMLVDISPINFO*)lParam;
