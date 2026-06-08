@@ -288,6 +288,7 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
     <ClCompile Include="..\src\ui\vw_input_address_box.cc" />
     <ClCompile Include="..\src\ui\vw_mem_ghostedit.cc" />
     <ClCompile Include="..\src\ui\vw_mem.cc" />
+    <ClCompile Include="..\src\vmph\vm.cc" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -297,7 +298,7 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" />
-    <MASM Include="..\src\test\vm.asm">
+    <MASM Include="..\src\test\vmdetect.asm">
       <FileType>Document</FileType>
     </MASM>
   </ItemGroup>

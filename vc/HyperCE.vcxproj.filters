@@ -25,6 +25,9 @@
     <ClCompile Include="..\src\ui\vw_input_address_box.cc">
       <Filter>ui</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\vmph\vm.cc">
+      <Filter>src\vmph</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="src">
@@ -38,6 +41,9 @@
     </Filter>
     <Filter Include="test">
       <UniqueIdentifier>{dd702dbc-17ca-4de9-a564-cb94ac8a673a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\vmph">
+      <UniqueIdentifier>{393a8f8b-2d39-4bfa-8aaa-ea4190492e17}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -56,7 +62,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="..\src\test\vm.asm">
+    <MASM Include="..\src\test\vmdetect.asm">
       <Filter>test</Filter>
     </MASM>
   </ItemGroup>
