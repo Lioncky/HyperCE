@@ -1,5 +1,5 @@
 ## HyperCE 
-> This Project is based on [HyperDbg](https://github.com/HyperDbg/HyperDbg)(VT-x)
+> ~~This Project is based on [HyperDbg](https://github.com/HyperDbg/HyperDbg)(VT-x)~~maybe in the future
 > 
 
 ## Build

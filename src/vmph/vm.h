@@ -40,12 +40,20 @@ typedef struct _VM_PROCESS_DATA
 
 }VM_PROCESS_DATA, * PVM_PROCESS_DATA;
 
-BOOLEAN VMEnumProcess(BOOLEAN(*lpCallBack)(PSTR));
+BOOLEAN VMNtKernelDataInit();
+BOOL VMEnumProcess(BOOL(*lpCallBack)(PSTR));
+VOID VMTraverseVadTree(PVOID VadRoot, ULONG Level, BOOL(*lpCallBack)(PSTR, UINT));
+
 DWORD64 VMTranslatePhyAddress(DWORD64 directoryTableBase, DWORD64 virtualAddress, PDWORD64 ppte);
-DWORD64 VMTranslatePhyAddress1(DWORD64 directoryTableBase, DWORD64 virtualAddress, PDWORD64 ppte);
 VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun);
 BOOLEAN VMReadVmVirtualAddr(PVOID TargetBuffer, DWORD64 DirectoryTableBase, DWORD64 VirtualAddress, SIZE_T Size);
+DWORD64 VMReadVirtualPtr(PVOID VirtualAddress);
+BOOL VMReadVirtualEx(PVOID VirtualAddress, PVOID lpDst, UINT Size);
+template <typename T> BOOL VMReadVirtual(PVOID VirtualAddress, T& lpDst) { return VMReadVirtualEx(VirtualAddress, &lpDst, sizeof(T)); }
 VMM_PTE_TP MemX64TransitionPaged(_In_ DWORD64 va, _In_ DWORD64 pte, _In_ DWORD64 DirectoryTableBase, _In_ DWORD64 Flags, _Out_ PDWORD64 ppa);
+
+BOOLEAN VMGetWinX64ProcessOffset();
+BOOLEAN VMGetWinX64ProcessOffsetDefault();
 
 #define VM_FLAG_NOVAD  0x00000001  // 不嵌套VAD了
 

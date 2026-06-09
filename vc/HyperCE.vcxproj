@@ -288,6 +288,7 @@ upx "D:\Program Files (x86)\MSIAfterburner\$(TargetFileName)"</Command>
     <ClCompile Include="..\src\ui\vw_input_address_box.cc" />
     <ClCompile Include="..\src\ui\vw_mem_ghostedit.cc" />
     <ClCompile Include="..\src\ui\vw_mem.cc" />
+    <ClCompile Include="..\src\vmph\nt_vad.cc" />
     <ClCompile Include="..\src\vmph\vm.cc" />
   </ItemGroup>
   <ItemGroup>

@@ -26,7 +26,10 @@
       <Filter>ui</Filter>
     </ClCompile>
     <ClCompile Include="..\src\vmph\vm.cc">
-      <Filter>src\vmph</Filter>
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vmph\nt_vad.cc">
+      <Filter>src\core</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -42,7 +45,7 @@
     <Filter Include="test">
       <UniqueIdentifier>{dd702dbc-17ca-4de9-a564-cb94ac8a673a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="src\vmph">
+    <Filter Include="src\core">
       <UniqueIdentifier>{393a8f8b-2d39-4bfa-8aaa-ea4190492e17}</UniqueIdentifier>
     </Filter>
   </ItemGroup>

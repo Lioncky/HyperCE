@@ -6,38 +6,50 @@
 
 struct HYPER_CE
 {
-	union {
-		struct {
-			HYPER_CALLER door; 
-			HANDLE hProcessHandle;
-			INT (*ReadProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
-			INT (*WriteProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
-			INT (*QueryVirtualMemoryEx)(LPCVOID lpBaseAddress, MEMORY_BASIC_INFORMATION* lpBuffer);
+	union { BYTE ___[0x1000]; struct {
+		HYPER_CALLER door; 
+		HANDLE hProcessHandle;
+		INT (*ReadProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
+		INT (*WriteProcessMemoryEx)(LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize);
+		INT (*QueryVirtualMemoryEx)(LPCVOID lpBaseAddress, MEMORY_BASIC_INFORMATION* lpBuffer);
 			
-			int dpi;
-			bool bDarkMode, bOption1, bShowConsle, bMainWnd;
-			bool bCovering, bCapting;
-			DWORD targetId; POINT pt;
-			HANDLE exeIcon, cursor, bakcur;
-			HANDLE crHSplit, crVSplit, crSizeAll, crDefault;
-			PVOID lpLowPtr;
+		int dpi;
+		bool bDarkMode, bOption1, bShowConsle, bMainWnd;
+		bool bCovering, bCapting;
+		DWORD targetId; POINT pt;
+		HANDLE exeIcon, cursor, bakcur;
+		HANDLE crHSplit, crVSplit, crSizeAll, crDefault;
+		PVOID lpLowPtr;
 
-			HWND ConsoleWnd;
-			HWND NotifyIconOverflowWindow, Shell_TrayWnd;
+		HWND ConsoleWnd;
+		HWND NotifyIconOverflowWindow, Shell_TrayWnd;
 
+		// 
+		// mem_view
+		// 
+		bool draggingSplitter;
+		HWND 
+			hHeader,
+			hListView,
+			hStatusBar,
+			hStatusEdit,
+			hStatusBtn;
 
-			// 
-			// mem_view
-			// 
-			bool draggingSplitter;
-			HWND hHeader;
-			HWND hListView;
-			HWND hStatusBar;
-			HWND hStatusEdit;
-			HWND hStatusBtn;
-		};
-		BYTE ___[0x1000];
-	};
+		//////////////////////////////////////////////////////////////////////////
+		//																										//
+		// Vm WalkThrough																		//
+		//																										//
+		//////////////////////////////////////////////////////////////////////////
+
+		// 
+		// eprocess struct members
+		// 
+		ULONG OsDirectoryTableBase, OsUniqueProcessId, OsImageFileNameOffset, OsActiveProcessLinks, OsVadRoot;
+			
+		ULONGLONG SystemProcessEprocess, MemoryKernelBase; PVOID PsLoadedModuleListPtr;
+		ULONGLONG MemoryKernelDirbase, MemoryKernelEntry;
+		UINT64 TargetVadRoot, TargetPid, TargetCR3;
+	};};
 	BYTE page2[0x1000];
 	WCHAR vw_mem_StateBar[0x180]; CHAR tmps[0x1D00];
 	BYTE unused[0x2000];

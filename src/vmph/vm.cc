@@ -1,66 +1,60 @@
 ﻿#include <WinNe.h>
+#include "hyperce.h"
 #include "vm.h"
-#define printf DAS
+#include "nt_vad.h"
 #define VADFindVadPte(...) 0;dbk()
-
-BOOLEAN VMGetWinX64ProcessOffset();
-
-HANDLE nt_init();
-
 HANDLE hProc; PSTR g_vmem;
-ULONGLONG g_SystemProcessEprocess, g_MemoryKernelBase; PVOID g_PsLoadedModuleListPtr;
-ULONGLONG g_DirectoryTableBaseOffset, g_ImageFileNameOffset;
-ULONGLONG g_MemoryKernelDirbase, g_MemoryKernelEntry; BOOLEAN VMNtKernelDataInit();
-ULONGLONG OsDirectoryTableBase, OsUniqueProcessId, OsImageFileNameOffset, OsActiveProcessLinks, OsVadRoot;
 
-HANDLE nt_init() {
-	static HANDLE pid;
+HANDLE vm_init() {
+
+	// 1. get wmware target process
+
 	Nt::EnumProc(+[](PSYSTEM_PROCESS_INFORMATION_NS _) {
 		if (_->ImageName.Length > 8 && nt::wcsstr(_->ImageName.Buffer, L"vmx.exe")) { // vmware-vmx.exe
-			pid = _->UniqueProcessId;
-			//  继续枚举，找到最后一个vmx.exe进程
-			// return false;
+			hProc = _->UniqueProcessId;
 		}
 		return true;
 	});
-	return !pid ? 0 : nt::OpenProc(pid, 2035711);
+
+	if (!(hProc = nt::OpenProc(hProc, 2035711)))
+		return 0;
+
+	MEMORY_BASIC_INFORMATION mbi;	// GetMappedFileNameA
+																	// \Device\HarddiskVolume7\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem
+	Nt::EnumProcMemory(hProc, PAGE_RW, +[](MEMORY_BASIC_INFORMATION& mbi, PVOID p) {
+
+		UNICODER _;
+		nt::QueryProcMemoryName(hProc, mbi.BaseAddress, _);
+		//DDS("%p %llX %S", mbi.BaseAddress, mbi.RegionSize, _.Buffer);
+
+		if (mbi.State == MEM_COMMIT && mbi.AllocationProtect == PAGE_READWRITE && nt::wcsstr(_.Buffer + 68, L".vmem") &&// mbi.RegionSize == 0x200000000 &&
+			_.Length > sizeof(L"564dd19c-2ea1-cc75-b9f7-beedebe279f7") + sizeof(LR"(\Device\HarddiskVolume7\VMACHINE\)")) {
+
+			DDS("Find the memory region at 0x%p %llX %S",
+				mbi.BaseAddress, mbi.RegionSize, _.Buffer
+			);
+			g_vmem = (char*)mbi.BaseAddress;
+			xmemcps(p, &mbi);
+			return FALSE;
+		}
+		return TRUE;
+
+		}, &mbi);
+
+	dbi(!g_vmem);
+
+	return hProc;
 }
 
-BOOL VMReadHostRegion(PVOID buffer, ULONG64 addr, SIZE_T size) {
-	//if (addr > 0x200000000) // 0x00000001c3c604c8 183c604c8
-	if (addr > 0x1C0000000) // 0x00000001c3c604c8 183c604c8
-		addr = addr - 0x40000000;
-		//return Nt::ReadProc(hProc, g_vmem1 + addr - 0x200000000 - 0x4000000, buffer, size);
 
-	return Nt::ReadProc(hProc, g_vmem + addr, buffer, size); // 0x000001a5a02f0000
-}
+BOOL VMReadHostRegion(PVOID buffer, ULONG64 lpPhyAddr, SIZE_T size) {
+	// 
+	// See doc/pcie.cc
+	// 
+	if (lpPhyAddr >= 0x100000000)
+		lpPhyAddr = lpPhyAddr - 0x40000000;
 
-DWORD64 MemX64Prototype(_In_ DWORD64 pte, _In_ DWORD64 DirectoryTableBase)
-{
-	DWORD64 PtePage = 0;
-	do
-	{
-		if (!pte || !DirectoryTableBase) {
-			break;
-		}
-		if (!VMReadVmVirtualAddr(&PtePage, DirectoryTableBase, MEM_X64_PTE_PROTOTYPE(pte), 8)) {
-			break;
-		}
-
-		if (!PtePage) {
-			break;
-		}
-
-		//如果是原型PTE，则是Subsection Pte,这里暂时没有处理
-		//否则就是PTE的Hard/Transition/PageFile 交给外面去处理
-		if (MEM_X64_PTE_PROTOTYPE(PtePage)) {
-			PtePage = 0;
-			break;
-		}
-
-	} while (FALSE);
-
-	return PtePage;
+	return Nt::ReadProc(hProc, g_vmem + lpPhyAddr, buffer, size);
 }
 
 BOOLEAN VMReadPaged(PVOID buffer, DWORD64 DirectoryTableBase, DWORD64 va, DWORD64 pte, SIZE_T size)
@@ -100,20 +94,18 @@ BOOLEAN VMReadPaged(PVOID buffer, DWORD64 DirectoryTableBase, DWORD64 va, DWORD6
 			break;
 		}
 
-
-
 		bRet = TRUE;
 	} while (FALSE);
 
 	return bRet;
-
 }
+
 BOOLEAN VMFindKernel() {
 	char* buffer = Nt::MemPtr();
 
-	for (DWORD64 i = (g_MemoryKernelEntry & ~0x1fffff) + 0x20000000;
-		i > g_MemoryKernelEntry - 0x20000000; i -= 0x1000) {
-		if (!VMReadVmVirtualAddr(buffer, g_MemoryKernelDirbase, i, 0x1000)) {
+	for (DWORD64 i = (G->MemoryKernelEntry & ~0x1fffff) + 0x20000000;
+		i > G->MemoryKernelEntry - 0x20000000; i -= 0x1000) {
+		if (!VMReadVmVirtualAddr(buffer, G->MemoryKernelDirbase, i, 0x1000)) {
 			continue;
 		}
 		if ((*(short*)(void*)(buffer) == IMAGE_DOS_SIGNATURE)) {
@@ -128,132 +120,49 @@ BOOLEAN VMFindKernel() {
 					poolCode = 1;
 
 				if (kdbg & poolCode) {
-					g_MemoryKernelBase = i;
-					g_SystemProcessEprocess = (DWORD64)VMGetExportsFunAddr(g_MemoryKernelBase, "PsInitialSystemProcess", FALSE);
-					g_PsLoadedModuleListPtr = VMGetExportsFunAddr(g_MemoryKernelBase, "PsLoadedModuleList", TRUE);
+					G->MemoryKernelBase = i;
+					G->SystemProcessEprocess = (DWORD64)VMGetExportsFunAddr(G->MemoryKernelBase, "PsInitialSystemProcess", FALSE);
+					G->PsLoadedModuleListPtr = VMGetExportsFunAddr(G->MemoryKernelBase, "PsLoadedModuleList", TRUE);
 					DDS("NtOsKernel:%p\n g_SystemProcessEprocess %p\ng_PsLoadedModuleListPtr %p\n", 
-						(void*)i, (void*)g_SystemProcessEprocess, (void*)g_PsLoadedModuleListPtr
+						(void*)i, (void*)G->SystemProcessEprocess, (void*)G->PsLoadedModuleListPtr
 					);
-					return (g_SystemProcessEprocess && g_PsLoadedModuleListPtr) ? TRUE : FALSE;
+					return (G->SystemProcessEprocess && G->PsLoadedModuleListPtr) ? TRUE : FALSE;
 				}
 			}
 		}
 	}
 	return FALSE;
 }
-void vm_main() {
+
+BOOLEAN vm_main() {
 
 	nt::syscall_hide();
 
 	//nt::vmware_cpuid(tmp, "Intel(R) Core(TM) Ultra 9 285K                  ");
 
-	hProc = nt_init();
+	//////////////////////////////////////////////////////////////////////////
+	//																										//
+	// 0. vmm Series API Init																	//
+	//																										//
+	//////////////////////////////////////////////////////////////////////////
 
-	if (!hProc) {
-		DDS("Failed to open process.\n");
-		dbk();
+	// 1. read vmx proc's vmem
+	if (!vm_init()) {
+		dbk("Failed to open process.\n");
+		return FALSE;
 	}
 
-	//////////////////////////////////////////////////////////////////////////
-	//																										//
-	// 1. 读取vmm完整系统内存，找到ntoskrnl.exe的基址和cr3				//
-	//																										//
-	//////////////////////////////////////////////////////////////////////////
-	DWORD64 buf_addr = 0x167945A04C8 - 0x0000016610940000; // 183c604c8 0x1c3c604c8
-
-	static bool b;
-	MEMORY_BASIC_INFORMATION mbi;	// GetMappedFileNameA
-																	// \Device\HarddiskVolume7\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem
-	Nt::EnumProcMemory(hProc, PAGE_RW, +[](MEMORY_BASIC_INFORMATION& mbi, PVOID p) {
-
-		UNICODER _;
-		nt::QueryProcMemoryName(hProc, mbi.BaseAddress, _);
-		//DDS("%p %llX %S", mbi.BaseAddress, mbi.RegionSize, _.Buffer);
-
-		if (mbi.State == MEM_COMMIT && mbi.AllocationProtect == PAGE_READWRITE && nt::wcsstr(_.Buffer + 68, L".vmem") &&// mbi.RegionSize == 0x200000000 &&
-				_.Length > sizeof(L"564dd19c-2ea1-cc75-b9f7-beedebe279f7") + sizeof(LR"(\Device\HarddiskVolume7\VMACHINE\)")) {
-
-			DDS("Find the memory region at 0x%p %llX %S",
-				mbi.BaseAddress, mbi.RegionSize, _.Buffer
-			);
-			g_vmem = (char*)mbi.BaseAddress;
-			xmemcps(p, &mbi);
-			return FALSE;
-		}
-		return TRUE;
-
-	}, &mbi);
-
 	// 2. 读取系统 CR3 g_MemoryKernelDirbase
-	VMNtKernelDataInit();//	[+][01:58:49]NT CR3 1AA000 NtOsKernl FFFFF8027A1F7EE0
+	VMNtKernelDataInit();//	[+]NT CR3 1AA000 NtOsKernl FFFFF8027A1F7EE0
 
 	// 3. ntoskrnl.exe基址  g_SystemProcessEprocess
 	VMFindKernel();
 
 	// 4. 特征读取EPROCESS偏移
-	if (g_MemoryKernelDirbase && g_SystemProcessEprocess)
-		VMGetWinX64ProcessOffset();
+	if (G->MemoryKernelDirbase && G->SystemProcessEprocess)
+		VMGetWinX64ProcessOffsetDefault();
 
-	VMEnumProcess(0);
-	// 0x167945A04C8 - 0x0000016610940000
-
-	//VMReadVmVirtualAddr(&buf_addr, g_MemoryKernelDirbase, 0xffffc383eaa604c8, 8);
-	//VMReadVmVirtualAddr(tmp, g_MemoryKernelDirbase, g_MemoryKernelBase, 0x1000);
-
-	char* p = nt::MemPtr();
-	if (!(VMReadVmVirtualAddr(p,
-		g_MemoryKernelDirbase,
-		g_SystemProcessEprocess, // PEPROCESS PsInitialSystemProcess 
-		0x800))) {
-		printf("main: Read System Process Eprocess Failed.\n");
-	}
-	// 16610940000
-	// 1660F940000
-	// 16601000000
-	// vmem 16610940000 200000000
-	// 16808BAC100 <- 1F826C100
-	// PDE <- 2382009E3
-	// vmem end 16810940000
-	//if (!VMFindVmProcessData("notepad.exe", VMGetVmwareDestProcData()))
-	//{
-	//	printf("main: Find Process Data Failed.\n");
-	//	return -1;
-	//}
-	//DWORD64 buf_addr = 0;
-	//for (DWORD64 i = 0; i < 0x7FFFFFFFFFFF; i += 0x1000) {
-	//	VMReadVmVirtualAddr(&buf_addr, VMGetVmwareDestProcData()->DestProcessCr3, i, 8);
-	//}
-	//auto * pPsInitialSystemProcess = VMGetExportsFunAddr(g_MemoryKernelBase, "PsInitialSystemProcess", FALSE);
-
-	p = p;
-	// 1234->4321
-
-	// 1 -> 1
-	// 10 -> 00010000
-
-
-	//nt::syscall();
-	//nt::MemAlloc();
-	if (nt::MsgBox("1", "2", MB_OKCANCEL) == 1) {
-		Nt::ShellOpenEx(NtCurrentImageName(), nt::current_dirw(), NULL, TRUE);
-
-	}
-
-	//LONGLONG u;
-	//char* p1 = nt::vreadf("E:\\1.img", &u);
-
-	//char* p = (PSTR) nt::alloc(u, (PSTR)0x140000000);
-	//xmemcpy(p, p1, u);
-
-	////main_tvm();
-	//nt::lg("%s %d", nt::CpuQName(), nt::CpuQVmxSupport());
-
-	//auto ff = nt::GetKrnfRVA("NtClose");
-	//UNICODER _(L"\\BaseNamedObjects\\NK");
-
-	if (1)
-		nt::exit();
-
+	return G->OsVadRoot && G->SystemProcessEprocess;
 }
 
 // uefi启动的系统，0x1000-0x100000的物理地址存了一个结构体PROCESSOR_START_BLOCK，而且都在页的开头。
@@ -277,14 +186,26 @@ BOOLEAN VMNtKernelDataInit() {
 			if (0xffffff0000000fff & *(DWORD64*)(void*)(buffer + o + 0xa0)) // PML4
 				continue;
 
-			g_MemoryKernelDirbase = *(DWORD64*)(void*)(buffer + o + 0xa0);
-			g_MemoryKernelEntry = *(DWORD64*)(void*)(buffer + o + 0x70);
-			DAS("NT CR3 %llX MemoryKernelEntry %llX", g_MemoryKernelDirbase, g_MemoryKernelEntry);
+			G->MemoryKernelDirbase = *(DWORD64*)(void*)(buffer + o + 0xa0);
+			G->MemoryKernelEntry = *(DWORD64*)(void*)(buffer + o + 0x70);
+			DAS("NT CR3 %llX MemoryKernelEntry %llX", G->MemoryKernelDirbase, G->MemoryKernelEntry);
 			return TRUE;
 		}
 	}
 
 	return FALSE;
+}
+
+BOOLEAN VMGetWinX64ProcessOffsetDefault() {
+	auto* p = G;
+
+	p->OsDirectoryTableBase = 0x28,
+	p->OsUniqueProcessId = 0x440,
+	p->OsImageFileNameOffset = 0x5A8,
+	p->OsActiveProcessLinks = 0x448,
+	p->OsVadRoot = 0x7D8;
+
+	return TRUE;
 }
 
 BOOLEAN VMGetWinX64ProcessOffset()
@@ -296,36 +217,35 @@ BOOLEAN VMGetWinX64ProcessOffset()
 	do
 	{
 		if (!(VMReadVmVirtualAddr(SystemProcessData,
-			g_MemoryKernelDirbase,
-			g_SystemProcessEprocess,
+			G->MemoryKernelDirbase,
+			G->SystemProcessEprocess,
 			VM_EPROCESS64_MAX_SIZE))) {
 			break;
 		}
+
 		//SignalState为TRUE表示此时该进程已被结束(SignalState目前是固定的)
 		if (*(PDWORD)(SystemProcessData + 0x4))
-		{
 			break;
-		}
+		
 		//DirectoryTableBase(目前是固定的)
 		if (0xffff800000000000 & *(PDWORD64)(SystemProcessData + 0x28))
-		{
 			break;
-		}
-		OsDirectoryTableBase = 0x28;
+		
+		G->OsDirectoryTableBase = 0x28;
 
 		//得到ImageFileNameOffset
 		for (int i = 0; i < VM_EPROCESS64_MAX_SIZE - 8; i += 8)
 		{
 			if (*(PDWORD64)(SystemProcessData + i) == 0x00006D6574737953) //system
 			{
-				OsImageFileNameOffset = i;
+				G->OsImageFileNameOffset = i;
 				break;
 			}
 		}
-		if (0 == OsImageFileNameOffset)
-		{
+
+		if (0 == G->OsImageFileNameOffset)
 			break;
-		}
+		
 
 		//得到PID和ActiveProcessLinks 
 		for (int i = 0; i < VM_EPROCESS64_MAX_SIZE - 8; i += 8)
@@ -345,33 +265,32 @@ BOOLEAN VMGetWinX64ProcessOffset()
 				//否则偏移是错的
 				DWORD64 TempEprocess = *(PDWORD64)(SystemProcessData + i + 8) - i - 8;
 				if (!VMReadVmVirtualAddr(TempProcessData,
-					g_MemoryKernelDirbase,
+					G->MemoryKernelDirbase,
 					TempEprocess,
 					VM_EPROCESS64_MAX_SIZE))
 				{
 					continue;
 				}
-				if ((*(PDWORD64)(TempProcessData + i + 16) - i - 8) != g_SystemProcessEprocess) {
+				if ((*(PDWORD64)(TempProcessData + i + 16) - i - 8) != G->SystemProcessEprocess) {
 					continue;
 				}
-				OsUniqueProcessId = i;
-				OsActiveProcessLinks = i + 8;
+				G->OsUniqueProcessId = i;
+				G->OsActiveProcessLinks = i + 8;
 
 				bIsTRUE = TRUE;
 			}
 		}
 
-		if (!bIsTRUE) {
+		if (!bIsTRUE) 
 			break;
-		}
-
+		
 		//得到VAD偏移
 		/*通过搜索ExitStatus值来查找VadRoot的偏移量，假定该值被设置为:0x00000103,
 		并且在VadRoot之前存在 - 12(VISTA) / -4(Win7 + )值可能是某些系统上的'VadHint';
 		扫描回0x40以找到任何相同的匹配(将假定为vadroot)。*/
 		{
 			DWORD idx = 0;
-			for (idx = 0x140 + OsImageFileNameOffset; idx < 0x7f0; idx += 8) {
+			for (idx = 0x140 + G->OsImageFileNameOffset; idx < 0x7f0; idx += 8) {
 
 				bIsTRUE = MEM_IS_KERNEL_ADDR_X64(*(PDWORD64)(SystemProcessData + idx)) &&
 					((*(PDWORD)(SystemProcessData + idx - 4) == 0x00000103) ||
@@ -387,10 +306,10 @@ BOOLEAN VMGetWinX64ProcessOffset()
 				break;
 			}
 
-			OsVadRoot = idx;
-			for (idx = OsVadRoot - 8; idx > OsVadRoot - 0x40; idx -= 8) {
-				if (*(PDWORD64)(SystemProcessData + idx) == *(PDWORD64)(SystemProcessData + OsVadRoot)) {
-					OsVadRoot = idx;
+			G->OsVadRoot = idx;
+			for (idx = G->OsVadRoot - 8; idx > G->OsVadRoot - 0x40; idx -= 8) {
+				if (*(PDWORD64)(SystemProcessData + idx) == *(PDWORD64)(SystemProcessData + G->OsVadRoot)) {
+					G->OsVadRoot = idx;
 					break;
 				}
 			}
@@ -405,8 +324,36 @@ BOOLEAN VMGetWinX64ProcessOffset()
 	return bRet;
 }
 
+BOOLEAN VMReadVadSubsectPath(PVOID VadSubsection, WCHAR* lpDst) {
+
+	if (!VadSubsection || !lpDst)
+		return FALSE;
+
+	VadSubsection = (PVOID)VMReadVirtualPtr(VadSubsection);
+	if (!VadSubsection)
+		return FALSE;
+
+	union {
+		CONTROL_AREA ca;
+		FILE_OBJECT fo;
+	};
+
+	if (!VMReadVirtual(VadSubsection, ca))
+		return FALSE;
+
+	if (!VMReadVirtual((PVOID)(ca.FilePointer.Value & ~0xFll), fo))
+		return FALSE;
+
+	if (!fo.FileName.Length) {
+		*lpDst = 0;
+		return TRUE;
+	}
+
+	return VMReadVirtualEx(fo.FileName.Buffer, lpDst, fo.FileName.Length + 2);
+}
+
 //BOOLEAN VMFindVmProcessData(CHAR* ProcessName, VM_PROCESS_DATA* VmProcessData) {
-BOOLEAN VMEnumProcess(BOOLEAN(*lpCallBack)(PSTR)) {
+BOOL VMEnumProcess(BOOL(*lpCallBack)(PSTR)) {
 	UINT64 VadRoot, CR3, PID, SystemProcessActiveProcessLinksAddr;
 	PSTR buf, ImageFileName; BOOLEAN status = FALSE; INT i = 0; 
 	LIST_ENTRY* p, TempList = { 0 };
@@ -415,21 +362,23 @@ BOOLEAN VMEnumProcess(BOOLEAN(*lpCallBack)(PSTR)) {
 	if (!buf)
 		return FALSE;
 
-	SystemProcessActiveProcessLinksAddr = g_SystemProcessEprocess + OsActiveProcessLinks;
-	p = (LIST_ENTRY*)(g_SystemProcessEprocess + OsActiveProcessLinks);
+	SystemProcessActiveProcessLinksAddr = G->SystemProcessEprocess + G->OsActiveProcessLinks;
+	p = (LIST_ENTRY*)(G->SystemProcessEprocess + G->OsActiveProcessLinks);
 	do {
-		if (i == 69)
-			i = i;
+
+		//if (i == 69)
+		//	i = i;
+
 		xmemset(&TempList, 0, sizeof(LIST_ENTRY));
-		if (!VMReadVmVirtualAddr(&TempList, g_MemoryKernelDirbase,
+		if (!VMReadVmVirtualAddr(&TempList, G->MemoryKernelDirbase,
 			(DWORD64)p, sizeof(LIST_ENTRY))) {
 			DDF("Failed to read LIST_ENTRY at %p\n", p);
 			break;
 		}
 
 		if (!VMReadVmVirtualAddr(
-			buf, g_MemoryKernelDirbase,
-			((DWORD64)p - OsActiveProcessLinks) +
+			buf, G->MemoryKernelDirbase,
+			((DWORD64)p - G->OsActiveProcessLinks) +
 			0,
 			VM_EPROCESS64_MAX_SIZE)) {
 			DDF("Failed to read ImageFileName at %p\n", p);
@@ -437,14 +386,17 @@ BOOLEAN VMEnumProcess(BOOLEAN(*lpCallBack)(PSTR)) {
 			continue;
 		}
 
-		ImageFileName = buf + OsImageFileNameOffset;
-		CR3 = *(UINT64*)(buf + OsDirectoryTableBase);
-		VadRoot = *(UINT64*)(buf + OsVadRoot);
-		PID = *(UINT64*)(buf + OsUniqueProcessId);
-		DDS("%d*[%d]%X %llX %s", ++i, PID, CR3, VadRoot, ImageFileName);
+		ImageFileName = buf + G->OsImageFileNameOffset;
+		CR3 = *(UINT64*)(buf + G->OsDirectoryTableBase);
+		VadRoot = *(UINT64*)(buf + G->OsVadRoot);
+		PID = *(UINT64*)(buf + G->OsUniqueProcessId);
+		// DDS("%d*[%d]%X %llX %s", ++i, PID, CR3, VadRoot, ImageFileName);
 
-		if (lpCallBack)
-			lpCallBack(buf);
+		if (lpCallBack && !lpCallBack(buf))
+			break;
+
+		if (!TempList.Flink)
+			p = p;
 
 		p = TempList.Flink;
 	} while (p && p != (LIST_ENTRY*)SystemProcessActiveProcessLinksAddr);
@@ -453,6 +405,56 @@ BOOLEAN VMEnumProcess(BOOLEAN(*lpCallBack)(PSTR)) {
 	return status;
 }
 
+VOID VMTraverseVadTree(PVOID VadRoot, ULONG Level, BOOL(*lpCallBack)(PSTR, UINT)) {
+	if (VadRoot == NULL) return;
+
+	MMVAD Vad;
+	if (!VMReadVirtual(VadRoot, Vad)) {
+		DbgPrint("Failed to read VAD at %p\n", VadRoot);
+		return;
+	}
+
+	// 先遍历左子树
+	if (Vad.Core.VadNode.Left) {
+		VMTraverseVadTree(Vad.Core.VadNode.Left, Level + 1, lpCallBack);
+	}
+
+	// 处理当前节点
+	//ULONG64 pt = GetProtectFromVad(&Vad.Core);
+	//ULONG64 start = GetVadStart(&Vad.Core);
+	//ULONG64 end = GetVadEnd(&Vad.Core);
+	//ULONG64 size = end - start;
+
+	//if (Vad.Subsection) {
+
+	//	VMReadVadSubsectPath(Vad.Subsection);
+	//	auto pCA = (PVOID)VMReadVirtualPtr(Vad.Subsection);
+
+	//	VMReadVirtual(pCA, ca);
+	//	VMReadVirtual((PVOID)(ca.FilePointer.Value & ~0xFll), fo);
+	//	if (fo.FileName.Length > 0)
+	//		VMReadVirtualEx(fo.FileName.Buffer, fullPath, fo.FileName.Length);
+	//	fullPath[fo.FileName.Length >> 1] = 0;
+	//}
+
+	//if (Level == 0) {
+	//	dbk();
+	//}
+	if (lpCallBack && !lpCallBack((PSTR)&Vad, Level))
+		return;
+
+	//DbgPrint("[%u] %016llX - %016llX (%u KB) Ref:%d %08X %s %p %p %S",
+	//	Level, start, end, size / 1024, Vad.Core.ReferenceCount,
+	//	pt, nt::show_vad_protect(pt), Vad.Subsection, Vad.FileObject, fullPath
+	//);
+
+	// 遍历右子树
+	if (Vad.Core.VadNode.Right) {
+		VMTraverseVadTree(Vad.Core.VadNode.Right, Level + 1, lpCallBack);
+	}
+}
+
+
 VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) {
 	void* ret = NULL;
 	IMAGE_DOS_HEADER dosHeader = { 0 };
@@ -460,18 +462,16 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 	IMAGE_DATA_DIRECTORY* dataDirectory = NULL;
 	char* exportsBuffer = NULL;
 	do {
-		VMReadVmVirtualAddr(&dosHeader, g_MemoryKernelDirbase, ModuleBaseAddr,
-			sizeof(IMAGE_DOS_HEADER));
+		VMReadVmVirtualAddr(&dosHeader, G->MemoryKernelDirbase, ModuleBaseAddr, sizeof(IMAGE_DOS_HEADER));
 		if (dosHeader.e_magic != IMAGE_DOS_SIGNATURE) {
-			printf("%s DOS signature does not match\n", FunName);
+			DDF("%s DOS signature does not match\n", FunName);
 			break;
 		}
 
-		VMReadVmVirtualAddr(&ntHeaders, g_MemoryKernelDirbase,
-			ModuleBaseAddr + dosHeader.e_lfanew,
-			sizeof(IMAGE_NT_HEADERS64));
+		VMReadVmVirtualAddr(&ntHeaders, G->MemoryKernelDirbase,
+			ModuleBaseAddr + dosHeader.e_lfanew, sizeof(IMAGE_NT_HEADERS64));
 		if (ntHeaders.Signature != IMAGE_NT_SIGNATURE) {
-			printf("NT header signature does not match\n");
+			DDF("NT header signature does not match\n");
 			break;
 		}
 
@@ -483,15 +483,15 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 		IMAGE_EXPORT_DIRECTORY* exportsDirectory =
 			(IMAGE_EXPORT_DIRECTORY*)exportsBuffer;
 
-		if (!VMReadVmVirtualAddr(exportsBuffer, g_MemoryKernelDirbase,
+		if (!VMReadVmVirtualAddr(exportsBuffer, G->MemoryKernelDirbase,
 			ModuleBaseAddr + dataDirectory->VirtualAddress,
 			dataDirectory->Size)) {
-			printf("Failed to read exports directory\n");
+			DDF("Failed to read exports directory\n");
 			break;
 		}
 		exportsBuffer[dataDirectory->Size] = 0;
 		if (!exportsDirectory->NumberOfNames || !exportsDirectory->AddressOfNames) {
-			printf("Zero exports found\n");
+			DDF("Zero exports found\n");
 			break;
 		}
 
@@ -502,7 +502,7 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 		if (exportsDirectory->AddressOfNames - exportOffset +
 			exportsDirectory->NumberOfNames * sizeof(DWORD) >
 			dataDirectory->Size) {
-			printf("Boundary check fail (1)\n");
+			DDF("Boundary check fail (1)\n");
 			break;
 		}
 
@@ -513,7 +513,7 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 		if (exportsDirectory->AddressOfNameOrdinals - exportOffset +
 			exportsDirectory->NumberOfNames * sizeof(USHORT) >
 			dataDirectory->Size) {
-			printf("Boundary check fail (2)\n");
+			DDF("Boundary check fail (2)\n");
 			break;
 		}
 
@@ -523,7 +523,7 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 		if (exportsDirectory->AddressOfFunctions - exportOffset +
 			exportsDirectory->NumberOfFunctions * sizeof(DWORD) >
 			dataDirectory->Size) {
-			printf("Boundary check fail (3)\n");
+			DDF("Boundary check fail (3)\n");
 			break;
 		}
 		for (DWORD i = 0; i < exportsDirectory->NumberOfNames; i++) {
@@ -539,7 +539,7 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 					ret = (void*)exportAddress;
 				}
 				else {
-					VMReadVmVirtualAddr(&ret, g_MemoryKernelDirbase, exportAddress,
+					VMReadVmVirtualAddr(&ret, G->MemoryKernelDirbase, exportAddress,
 						sizeof(DWORD64));
 				}
 				break;
@@ -555,6 +555,12 @@ VOID* VMGetExportsFunAddr(DWORD64 ModuleBaseAddr, PCSTR FunName, BOOLEAN IsFun) 
 }
 
 //
+DWORD64 VMReadVirtualPtr(PVOID VirtualAddress) {
+	return VMReadVmVirtualAddr(&VirtualAddress, G->MemoryKernelDirbase, (DWORD64)VirtualAddress, sizeof(DWORD64)) ? (DWORD64)VirtualAddress : 0;
+}
+BOOL VMReadVirtualEx(PVOID VirtualAddress, PVOID lpDst, UINT Size) {
+	return VMReadVmVirtualAddr(lpDst, G->MemoryKernelDirbase, (DWORD64)VirtualAddress, Size);
+}
 BOOLEAN VMReadVmVirtualAddr(PVOID TargetBuffer, DWORD64 DirectoryTableBase,
 	DWORD64 VirtualAddress, SIZE_T Size) {
 	BOOLEAN bRet = FALSE;
@@ -575,7 +581,7 @@ BOOLEAN VMReadVmVirtualAddr(PVOID TargetBuffer, DWORD64 DirectoryTableBase,
 		AlignmentCount = (((VirtualAddress & 0xFFF) + (Size & 0xFFF)) > PAGE_SIZE ? 1 : 0) + (((Size + 0xFFF) & ~0xFFF) / 0x1000);
 		for (int i = 0; i < AlignmentCount; i++)
 		{
-			PhyAddr = VMTranslatePhyAddress1(DirectoryTableBase, va, &pte);
+			PhyAddr = VMTranslatePhyAddress(DirectoryTableBase, va, &pte);
 
 			if (!PhyAddr) {
 				f = FALSE;
@@ -613,12 +619,12 @@ BOOLEAN VMReadVmVirtualAddr(PVOID TargetBuffer, DWORD64 DirectoryTableBase,
 
 	return bRet;
 }
-DWORD64 VMTranslatePhyAddress1(
+DWORD64 VMTranslatePhyAddress(
 	DWORD64 directoryTableBase,
 	DWORD64 virtualAddress,
 	PDWORD64 ppte)
 {
-	if (!directoryTableBase || !ppte)
+	if (!directoryTableBase || !ppte|| !virtualAddress)
 		return 0;
 
 	*ppte = 0;
@@ -725,193 +731,34 @@ DWORD64 VMTranslatePhyAddress1(
 	return (PTE & PAGE_MASK)
 		| (virtualAddress & 0xFFF);
 }
-//虚拟地址转换物理地址
-DWORD64 VMTranslatePhyAddress2(
-	DWORD64 directoryTableBase,
-	DWORD64 virtualAddress,
-	PDWORD64 ppte)
+
+
+DWORD64 MemX64Prototype(_In_ DWORD64 pte, _In_ DWORD64 DirectoryTableBase)
 {
-	if (!directoryTableBase || !virtualAddress || !ppte)
-		return 0;
-
-	*ppte = 0;
-
-	constexpr DWORD64 PAGE_MASK = 0x000FFFFFFFFFF000ULL;
-
-	// canonical check
-	LONG64 sign = (LONG64)virtualAddress >> 47;
-	if (sign != 0 && sign != -1)
-		return 0;
-
-	// CR3 必须 mask
-	directoryTableBase &= PAGE_MASK;
-
-	DWORD64 PML4E = 0, PDPTE = 0, PDE = 0, PTE = 0;
-
-	WORD PML4Index = (virtualAddress >> 39) & 0x1FF;
-	WORD PDPTIndex = (virtualAddress >> 30) & 0x1FF;
-	WORD PDIndex = (virtualAddress >> 21) & 0x1FF;
-	WORD PTIndex = (virtualAddress >> 12) & 0x1FF;
-
-	//
-	// PML4E
-	//
-	if (!VMReadHostRegion(&PML4E,
-		directoryTableBase + PML4Index * 8,
-		sizeof(PML4E)))
-		return 0;
-	if (!VM_X64_PTE_IS_VALID(PML4E))
-		return 0;
-
-	//
-	// PDPTE
-	//
-	if (!VMReadHostRegion(&PDPTE,
-		(PML4E & PAGE_MASK) + PDPTIndex * 8,
-		sizeof(PDPTE)))
-		return 0;
-
-	if (!VM_X64_PTE_IS_VALID(PDPTE))
-		return 0;
-
-	// ===== 1GB PAGE =====
-	if (PDPTE & (1ULL << 7))
-	{
-		*ppte = PDPTE;
-
-		return (PDPTE & 0x000FFFFFC0000000ULL)
-			| (virtualAddress & 0x3FFFFFFFULL);
-	}
-
-	//
-	// PDE
-	//
-	if (!VMReadHostRegion(&PDE,
-		(PDPTE & PAGE_MASK) + PDIndex * 8,
-		sizeof(PDE)))
-		return 0;
-
-	if (!VM_X64_PTE_IS_VALID(PDE))
-		return 0;
-
-	printf("PML4E = %016llX\n", PML4E);
-	printf("PDPTE = %016llX\n", PDPTE);
-	printf("PDE   = %016llX\n", PDE);
-	printf("PTE   = %016llX\n", PTE);
-
-	// ===== 2MB PAGE =====
-	if (PDE & (1ULL << 7))
-	{
-		*ppte = PDE;
-
-		return (PDE & 0x000FFFFFFFE00000ULL)
-			| (virtualAddress & 0x1FFFFFULL);
-	}
-
-	//
-	// PTE
-	//
-	if (!VMReadHostRegion(&PTE,
-		(PDE & PAGE_MASK) + PTIndex * 8,
-		sizeof(PTE)))
-		return 0;
-
-	if (!VM_X64_PTE_IS_VALID(PTE))
-		return 0;
-
-	*ppte = PTE;
-
-	return (PTE & PAGE_MASK)
-		| (virtualAddress & 0xFFF);
-}
-DWORD64 VMTranslatePhyAddress(DWORD64 directoryTableBase, DWORD64 virtualAddress, PDWORD64 ppte) {
-	DWORD64 phyAddress = 0, PML4E = 0, PDPTE = 0, PDE = 0, PTE = 0;
-	auto PML4 = (WORD)((virtualAddress >> 39) & 0x1FF);
-	auto DirectoryPtr = (WORD)((virtualAddress >> 30) & 0x1FF);
-	auto Directory = (WORD)((virtualAddress >> 21) & 0x1FF);
-	auto Table = (WORD)((virtualAddress >> 12) & 0x1FF);
+	DWORD64 PtePage = 0;
 	do
 	{
-		if (!directoryTableBase || !virtualAddress || !ppte) {
+		if (!pte || !DirectoryTableBase) {
 			break;
-
 		}
-		//虚拟地址检查
-		if ((LONG64)virtualAddress >> 0x2F != -1 && (LONG64)virtualAddress >> 0x2F != 0) {
+		if (!VMReadVmVirtualAddr(&PtePage, DirectoryTableBase, MEM_X64_PTE_PROTOTYPE(pte), 8)) {
 			break;
 		}
 
-		//初始化
-		*ppte = 0;
-
-		if (!VMReadHostRegion(&PML4E,
-			directoryTableBase + (DWORD64)PML4 * sizeof(DWORD64),
-			sizeof(PML4E))) {
-			break;
-		}
-		if (PML4E == 0 || !VM_X64_PTE_IS_VALID(PML4E)) {
-			break;
-		}
-		if (!VMReadHostRegion(&PDPTE,
-			(PML4E & 0xFFFF1FFFFFF000) +
-			(DWORD64)DirectoryPtr * sizeof(DWORD64),
-			sizeof(PDPTE))) {
+		if (!PtePage) {
 			break;
 		}
 
-		//1G(超大页面)和2M(大页面)，驻留在不可分页内存中，不使用PageFile和压缩内存等分页内存
-		if (PDPTE == 0 || !VM_X64_PTE_IS_VALID(PDPTE)) {
+		//如果是原型PTE，则是Subsection Pte,这里暂时没有处理
+		//否则就是PTE的Hard/Transition/PageFile 交给外面去处理
+		if (MEM_X64_PTE_PROTOTYPE(PtePage)) {
+			PtePage = 0;
 			break;
 		}
-
-		//PDPTE.PS=1; 1G页面
-		if ((PDPTE & (1 << 7)) != 0) {
-			*ppte = PDPTE;
-			phyAddress = (PDPTE & 0xFFFFFC0000000) + (virtualAddress & 0x3FFFFFFF);
-			break;
-		}
-
-		if (!VMReadHostRegion(&PDE,
-			(PDPTE & 0xFFFFFFFFFF000) +
-			(DWORD64)Directory * sizeof(DWORD64),
-			sizeof(PDE))) {
-			break;
-		}
-
-		if (PDE == 0 || !VM_X64_PTE_IS_VALID(PDE)) {
-			break;
-		}
-
-		//PDE.PS=1;2M页面
-		if ((PDE & (1 << 7)) != 0) {
-			*ppte = PDE;
-			phyAddress = (PDE & 0xFFFFFFFE00000) + (virtualAddress & 0x1FFFFF);
-			break;
-		}
-
-		if (!VMReadHostRegion(&PTE,
-			(PDE & 0xFFFFFFFFFF000) + (DWORD64)Table * sizeof(DWORD64),
-			sizeof(PTE))) {
-			break;
-		}
-
-		if (PTE == 0) {
-			break;
-		}
-		*ppte = PTE;
-
-		if (!VM_X64_PTE_IS_VALID(PTE)) {
-			phyAddress = PTE;
-			break;
-		}
-
-		phyAddress = (PTE & 0xFFFFFFFFFF000) + (virtualAddress & 0xFFF);
-
 
 	} while (FALSE);
 
-	return phyAddress;
-
+	return PtePage;
 }
 
 //从虚拟内存读取“分页”页面
@@ -1047,15 +894,3 @@ VMM_PTE_TP MemX64TransitionPaged(_In_ DWORD64 va, _In_ DWORD64 pte, _In_ DWORD64
 
 	return (VMM_PTE_TP)PteTp;
 }
-
-// 7fff ffff ffff
-// 16610940000
-//	1: kd> db 0xffffe7010f6a4040
-//ffffe701`0f6a4040  03 00 00 00 00 00 00 00-48 40 6a 0f 01 e7 ff ff  ........H@j.....
-//ffffe701`0f6a4050  48 40 6a 0f 01 e7 ff ff-58 40 6a 0f 01 e7 ff ff  H@j.....X@j.....
-//ffffe701`0f6a4060  58 40 6a 0f 01 e7 ff ff-00 a0 1a 00 00 00 00 00  X@j.............
-//ffffe701`0f6a4070  38 f3 73 0f 01 e7 ff ff-38 63 1a 15 01 e7 ff ff  8.s.....8c......
-//ffffe701`0f6a4080  00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 00  ................
-//ffffe701`0f6a4090  01 00 14 00 00 00 00 00-0f 00 00 00 00 00 00 00  ................
-//ffffe701`0f6a40a0  00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 00  ................
-//ffffe701`0f6a40b0  00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 00  ............
