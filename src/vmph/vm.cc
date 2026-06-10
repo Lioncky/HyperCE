@@ -1,60 +1,90 @@
 ﻿#include <WinNe.h>
 #include "hyperce.h"
 #include "vm.h"
-#include "nt_vad.h"
-#define VADFindVadPte(...) 0;dbk()
-HANDLE hProc; PSTR g_vmem;
 
-HANDLE vm_init() {
+#define VADFindVadPte(...) 0;dbk()
+
+// -------------------------------------------------------
+
+bool vm_init() {
 
 	// 1. get wmware target process
-
 	Nt::EnumProc(+[](PSYSTEM_PROCESS_INFORMATION_NS _) {
 		if (_->ImageName.Length > 8 && nt::wcsstr(_->ImageName.Buffer, L"vmx.exe")) { // vmware-vmx.exe
-			hProc = _->UniqueProcessId;
+			G->hPid = _->UniqueProcessId;
 		}
 		return true;
 	});
 
-	if (!(hProc = nt::OpenProc(hProc, 2035711)))
-		return 0;
+	// 2. open target process
+	if (!(G->hProc = nt::OpenProc(G->hPid, 2035711)))
+		return false;
 
-	MEMORY_BASIC_INFORMATION mbi;	// GetMappedFileNameA
-																	// \Device\HarddiskVolume7\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem
-	Nt::EnumProcMemory(hProc, PAGE_RW, +[](MEMORY_BASIC_INFORMATION& mbi, PVOID p) {
+	// 3. enum handles and remap session
+	Nt::EnumHandlesName(G->hProc, G->hPid, +[](PWSTR _, SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX* i) {
 
-		UNICODER _;
-		nt::QueryProcMemoryName(hProc, mbi.BaseAddress, _);
-		//DDS("%p %llX %S", mbi.BaseAddress, mbi.RegionSize, _.Buffer);
+		if (nt::wcsstr(_, L".vmem")) {
 
-		if (mbi.State == MEM_COMMIT && mbi.AllocationProtect == PAGE_READWRITE && nt::wcsstr(_.Buffer + 68, L".vmem") &&// mbi.RegionSize == 0x200000000 &&
-			_.Length > sizeof(L"564dd19c-2ea1-cc75-b9f7-beedebe279f7") + sizeof(LR"(\Device\HarddiskVolume7\VMACHINE\)")) {
-
-			DDS("Find the memory region at 0x%p %llX %S",
-				mbi.BaseAddress, mbi.RegionSize, _.Buffer
-			);
-			g_vmem = (char*)mbi.BaseAddress;
-			xmemcps(p, &mbi);
-			return FALSE;
+			if (nt::ntMapFile(i->HandleValue, (PSTR)0x200000000, 0x200000000) >= 0) {
+				nt::l->UserPtr = (PSTR)0x200000000;
+				DDS("8G VMEM LOAD!");
+			}
+			return false;
 		}
-		return TRUE;
+		return true;
+	});
 
-		}, &mbi);
-
-	dbi(!g_vmem);
-
-	return hProc;
+	// 4. vmx boom
+	return nt::vmx_init();
 }
 
+BOOLEAN vm_main() {
 
+	nt::syscall_hide();
+
+	//nt::vmware_cpuid(tmp, "Intel(R) Core(TM) Ultra 9 285K                  ");
+
+	//////////////////////////////////////////////////////////////////////////
+	//																										//
+	// 0. vmm Series API Init																	//
+	//																										//
+	//////////////////////////////////////////////////////////////////////////
+
+	// 1. read vmx proc's vmem
+	if (!vm_init()) {
+		dbk("Failed to open process.\n");
+		return FALSE;
+	}
+
+	if (1)
+		return TRUE;
+
+	// 4. 特征读取EPROCESS偏移
+	if (G->MemoryKernelDirbase && G->SystemProcessEprocess)
+		VMGetWinX64ProcessOffsetDefault();
+
+	return G->OsVadRoot && G->SystemProcessEprocess;
+}
+
+// -------------------------------------------------------
 BOOL VMReadHostRegion(PVOID buffer, ULONG64 lpPhyAddr, SIZE_T size) {
+	return nt::vmx_rva(buffer, lpPhyAddr, size);
+}
+
+PSTR g_vmem;
+BOOL VMReadHostRegion(PVOID buffer, ULONG64 lpPhyAddr, SIZE_T size);
+
+BOOL VMReadHostRegionOri(PVOID buffer, ULONG64 lpPhyAddr, SIZE_T size) {
 	// 
 	// See doc/pcie.cc
 	// 
 	if (lpPhyAddr >= 0x100000000)
 		lpPhyAddr = lpPhyAddr - 0x40000000;
 
+	#if 0
 	return Nt::ReadProc(hProc, g_vmem + lpPhyAddr, buffer, size);
+	#endif
+	return FALSE;
 }
 
 BOOLEAN VMReadPaged(PVOID buffer, DWORD64 DirectoryTableBase, DWORD64 va, DWORD64 pte, SIZE_T size)
@@ -134,44 +164,14 @@ BOOLEAN VMFindKernel() {
 	return FALSE;
 }
 
-BOOLEAN vm_main() {
-
-	nt::syscall_hide();
-
-	//nt::vmware_cpuid(tmp, "Intel(R) Core(TM) Ultra 9 285K                  ");
-
-	//////////////////////////////////////////////////////////////////////////
-	//																										//
-	// 0. vmm Series API Init																	//
-	//																										//
-	//////////////////////////////////////////////////////////////////////////
-
-	// 1. read vmx proc's vmem
-	if (!vm_init()) {
-		dbk("Failed to open process.\n");
-		return FALSE;
-	}
-
-	// 2. 读取系统 CR3 g_MemoryKernelDirbase
-	VMNtKernelDataInit();//	[+]NT CR3 1AA000 NtOsKernl FFFFF8027A1F7EE0
-
-	// 3. ntoskrnl.exe基址  g_SystemProcessEprocess
-	VMFindKernel();
-
-	// 4. 特征读取EPROCESS偏移
-	if (G->MemoryKernelDirbase && G->SystemProcessEprocess)
-		VMGetWinX64ProcessOffsetDefault();
-
-	return G->OsVadRoot && G->SystemProcessEprocess;
-}
 
 // uefi启动的系统，0x1000-0x100000的物理地址存了一个结构体PROCESSOR_START_BLOCK，而且都在页的开头。
 //其中_KPROCESSOR_STATE中有system的cr3
 //参考：http://standa-note.blogspot.com/2020/03/initializing-application-processors-on.html
 //参考：http://publications.alex-ionescu.com/Recon/ReconBru%202017%20-%20Getting%20Physical%20with%20USB%20Type-C,%20Windows%2010%20RAM%20Forensics%20and%20UEFI%20Attacks.pdf
-BOOLEAN VMNtKernelDataInit() {
-
-	char* buffer = Nt::MemPtr(); // alloced 0x10000
+BOOLEAN VMNtKernelDataInitOri() {
+	
+	char* buffer = nt::tmp();
 
 	for (DWORD64 i = 0; i < 10; i++) {
 		VMReadHostRegion(buffer, i * 0x10000, 0x10000);
@@ -188,6 +188,7 @@ BOOLEAN VMNtKernelDataInit() {
 
 			G->MemoryKernelDirbase = *(DWORD64*)(void*)(buffer + o + 0xa0);
 			G->MemoryKernelEntry = *(DWORD64*)(void*)(buffer + o + 0x70);
+
 			DAS("NT CR3 %llX MemoryKernelEntry %llX", G->MemoryKernelDirbase, G->MemoryKernelEntry);
 			return TRUE;
 		}
@@ -415,8 +416,8 @@ VOID VMTraverseVadTree(PVOID VadRoot, ULONG Level, BOOL(*lpCallBack)(PSTR, UINT)
 	}
 
 	// 先遍历左子树
-	if (Vad.Core.VadNode.Left) {
-		VMTraverseVadTree(Vad.Core.VadNode.Left, Level + 1, lpCallBack);
+	if (Vad.VadNode.Left) {
+		VMTraverseVadTree(Vad.VadNode.Left, Level + 1, lpCallBack);
 	}
 
 	// 处理当前节点
@@ -449,8 +450,8 @@ VOID VMTraverseVadTree(PVOID VadRoot, ULONG Level, BOOL(*lpCallBack)(PSTR, UINT)
 	//);
 
 	// 遍历右子树
-	if (Vad.Core.VadNode.Right) {
-		VMTraverseVadTree(Vad.Core.VadNode.Right, Level + 1, lpCallBack);
+	if (Vad.VadNode.Right) {
+		VMTraverseVadTree(Vad.VadNode.Right, Level + 1, lpCallBack);
 	}
 }
 
@@ -894,3 +895,160 @@ VMM_PTE_TP MemX64TransitionPaged(_In_ DWORD64 va, _In_ DWORD64 pte, _In_ DWORD64
 
 	return (VMM_PTE_TP)PteTp;
 }
+
+
+/*
+
+226C9840000:
+sub rsp,28
+mov rcx,226C9840200
+mov rdx,6 // SECTION_MAP_READ | SECTION_MAP_WRITE,
+mov r8,226C9840120
+lea rax, [rsp+20]
+mov [rax], 4
+mov [rax+8],08000000
+mov [rax+10],0
+call NtCreateSection
+add rsp,28
+ret
+
+
+226C9840110:
+
+// OBJECT_ATTRIBUTES
+226C9840120:
+dq 30 0 226C9840180 40 0 0
+
+// UNICODE STRING
+226C9840180:
+dw 2C 00 30 00 00 00 00 00
+dw '\BaseNamedObjects\VMEM'
+
+
+
+			nt::EnumHandlesName(hProc, hPid, +[](PWSTR _, SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX* i) {
+				if (nt::wcsstr(_, L".vmem")) {
+					DAS("%S", _);
+					return true;
+				}
+				if (!nt::wcsstr(_, L"\\Sessions\\"))
+					return true;
+
+				HANDLE hDup = i->HandleValue; // i->HandleValue = 0;
+				DAS("%X %S", hDup, _);
+
+				ULONG returnLen;
+				SECTION_IMAGE_INFORMATION sii = { 0 };
+				if (RR(nt::ntQuerySection(hDup, SectionImageInformation,
+					&sii, sizeof(sii), &returnLen))) {
+
+					DDS("%p %llX %X", sii.TransferAddress, sii.ImageFileSize, sii.CommittedStackSize);
+
+					if (sii.ImageFileSize == 0x200000000) {
+						DDS("Found Section! Handle: 0x%X, Type: %S",
+							i->HandleValue, L"");
+						// 找到了！
+						return false;  // 停止枚举
+					}
+				}
+				return true;
+			});
+*/
+
+
+#if 1
+
+#else
+LR"(??\E:\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem)";
+LR"(\Device\HarddiskVolume7\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem)";
+
+auto aaa = *(PVOID*)(ptr + 85);
+auto aaa1 = *(PVOID*)(ptr + 0x44);
+
+	MEMORY_BASIC_INFORMATION mbi;	// GetMappedFileNameA
+																	// \Device\HarddiskVolume7\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem
+	if (0)Nt::EnumProcMemory(hProc, PAGE_RW, +[](MEMORY_BASIC_INFORMATION& mbi, PVOID p) {
+
+		UNICODER _;
+		nt::QueryProcMemoryName(hProc, mbi.BaseAddress, _);
+		//DDS("%p %llX %S", mbi.BaseAddress, mbi.RegionSize, _.Buffer);
+
+		if (mbi.State == MEM_COMMIT && mbi.AllocationProtect == PAGE_READWRITE && nt::wcsstr(_.Buffer + 68, L".vmem") &&// mbi.RegionSize == 0x200000000 &&
+			_.Length > sizeof(L"564dd19c-2ea1-cc75-b9f7-beedebe279f7") + sizeof(LR"(\Device\HarddiskVolume7\VMACHINE\)")) {
+
+			HANDLE hSection = NULL;
+			DDS("Find the memory region at 0x%p %llX %S",
+				mbi.BaseAddress, mbi.RegionSize, _.Buffer
+			);
+
+			nt::l->UserPtr = 0;// 200000000~3FFFFFFFF
+
+			#if 1
+
+			int ok = nt::vmx_init_physical_memory(&nt::l->UserPtr, mbi.RegionSize, &_);
+			if (ok == -1) {
+				ok = nt::vmx_init_physical_memory(&nt::l->UserPtr, mbi.RegionSize, &_);
+			}
+
+			dbi(ok);
+			
+			#else
+			
+			UNICODERW _1(LR"(\??\E:\VMACHINE\Windows 10 x64\564dd19c-2ea1-cc75-b9f7-beedebe279f7.vmem)");
+
+			// 2. 用 Section 名称打开共享内存
+			NTSTATUS status;
+			OBJECT_ATTRIBUTES oa;
+			IO_STATUS_BLOCK ioStatus;
+			HANDLE hSection1, hFile = NULL;
+			InitializeObjectAttributes(&oa, &_, OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+			// 3. 打开文件
+			status = nt::ntCreateFile(
+				&hFile,
+				GENERIC_READ | GENERIC_WRITE ,
+				&oa,
+				&ioStatus,
+				NULL,           // 无分配大小
+				FILE_ATTRIBUTE_NORMAL,
+				FILE_SHARE_READ | FILE_SHARE_WRITE, // 30
+				FILE_OPEN,      // 打开已存在的文件
+				0,              // 无特殊标志
+				NULL,           // 无 EaBuffer
+				0               // EaLength
+			);
+			sizeof("\\BaseNamedObjects\\VMEM");
+			oa.ObjectName = NULL;
+			status = nt::ntCreateSection(
+				&hSection,
+				SECTION_MAP_READ | SECTION_MAP_WRITE,
+				&oa,
+				(PLONGLONG)&mbi.RegionSize,  // 使用内存区域的大小
+				PAGE_READWRITE,
+				SEC_COMMIT,
+				hFile          // 关联文件
+			);
+
+			if (NT_SUCCESS(status)) {
+				status = nt::ntMapViewOfSection(hSection, HPROC,
+					&nt::l->UserPtr,
+					0,
+					mbi.RegionSize,
+					NULL,
+					&mbi.RegionSize,
+					ViewShare,
+					0,
+					PAGE_READWRITE
+				);
+			}
+			#endif
+
+			g_vmem = (char*)mbi.BaseAddress;
+			xmemcps(p, &mbi);
+			return FALSE;
+		}
+		return TRUE;
+
+		}, &mbi);
+
+#endif

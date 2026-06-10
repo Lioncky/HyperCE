@@ -44,6 +44,7 @@ struct HYPER_CE
 		// 
 		// eprocess struct members
 		// 
+		HANDLE hPid, hProc;
 		ULONG OsDirectoryTableBase, OsUniqueProcessId, OsImageFileNameOffset, OsActiveProcessLinks, OsVadRoot;
 			
 		ULONGLONG SystemProcessEprocess, MemoryKernelBase; PVOID PsLoadedModuleListPtr;

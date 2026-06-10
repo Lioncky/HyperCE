@@ -378,10 +378,10 @@ static void on_wm_create(HWND hwnd) {
 
 	ListView_SetExtendedListViewStyle(G->hListView, LVS_EX_FULLROWSELECT);
 
-	auto AddCol = [&](int i, int cx, LPCWSTR text) {
+	auto AddCol = [](int i, int cx, LPCWSTR text) {
 		LVCOLUMN c = { LVCF_WIDTH | LVCF_TEXT, 0, cx, (LPWSTR)text };
 		ListView_InsertColumn(G->hListView, i, &c);
-		};
+	};
 	AddCol(0, 580, L"地址 Address");
 	AddCol(1, 380, L"字节 Bytes");
 	AddCol(2, 360, L"指令 Asm");
@@ -662,13 +662,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					auto size = (int)(intptr_t)(g_Metric.selectionStart - g_Metric.selectionEnd);
 					if (size < 0) size = -size;
 
-					SetStateText("SELECT %p~%p(%d bytes) in %llX(0x%X-%s%s%s)",
-						g_Metric.selectionStart,
-						g_Metric.selectionEnd, size,
-						mbi.BaseAddress, mbi.RegionSize,
+					SetStateText("%llX(%s%s%s-0x%X) at %p~%p(%d bytes)",
+						mbi.BaseAddress,
 						(mbi.Protect & 0xEE) ? "R" : "",
 						(mbi.Protect & 0xCC) ? "W" : "",
-						(mbi.Protect & 0xF0) ? "E" : ""
+						(mbi.Protect & 0xF0) ? "E" : "", mbi.RegionSize,
+						g_Metric.selectionStart,
+						g_Metric.selectionEnd, size
 					);
 				}
 			}

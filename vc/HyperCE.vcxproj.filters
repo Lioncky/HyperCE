@@ -19,16 +19,7 @@
     <ClCompile Include="..\src\ui\vw_mem.cc">
       <Filter>ui</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\ui\vw_mem_ghostedit.cc">
-      <Filter>ui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\ui\vw_input_address_box.cc">
-      <Filter>ui</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\vmph\vm.cc">
-      <Filter>src\core</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\vmph\nt_vad.cc">
       <Filter>src\core</Filter>
     </ClCompile>
   </ItemGroup>
@@ -58,11 +49,6 @@
     <ResourceCompile Include="HyperCE.rc">
       <Filter>rc</Filter>
     </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\..\README.md">
-      <Filter>rc</Filter>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="..\src\test\vmdetect.asm">

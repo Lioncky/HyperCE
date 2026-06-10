@@ -321,8 +321,8 @@ long long ON_WM_UAHDRAWMENUITEM(UAHDRAWMENUITEM* drawingInfo) {
 	MENUITEMINFO itemInfo{ sizeof(itemInfo), MIIM_STRING };
 	itemInfo.dwTypeData = menuString;
 	itemInfo.cch = (sizeof(menuString) / sizeof(wchar_t)) - 1;
-
-	if (!GetMenuItemInfoW(drawingInfo->um.hMenu, drawingInfo->umi.iPosition, TRUE, &itemInfo))
+	
+	if (!Nt::GetMenuItemInfoU32(drawingInfo->um.hMenu, drawingInfo->umi.iPosition, TRUE, &itemInfo))
 		return 0ll;
 	menuString[255] = L'\0';
 
@@ -357,12 +357,12 @@ long long ON_WM_UAHDRAWMENUITEM(UAHDRAWMENUITEM* drawingInfo) {
 
 	constexpr int _DTT_TEXTCOLOR = (1UL << 0);
 	const DTTOPTS_NS textOptions{ sizeof(textOptions), _DTT_TEXTCOLOR, iTextStateID != MBI_DISABLED ? DARK_MENU_ITEM_FOREGROUND : DARK_MENU_ITEM_FOREGROUND_DISABLED };
-	FillRect(drawingInfo->um.hdc, &drawingInfo->dis.rcItem, *hBrBackground);
+	Nt::FillRectU32(drawingInfo->um.hdc, &drawingInfo->dis.rcItem, *hBrBackground);
 
 	// isMdiCaptionButton
 	if (*menuString == L'\0')
 	{
-		int offset = GetMenuItemCount(drawingInfo->um.hMenu) - drawingInfo->umi.iPosition;
+		int offset = Nt::GetMenuItemCountU32(drawingInfo->um.hMenu) - drawingInfo->umi.iPosition;
 
 		wchar_t glyph;
 		if (drawingInfo->umi.iPosition == 0)
