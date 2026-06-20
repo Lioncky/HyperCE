@@ -30,7 +30,56 @@ uintptr_t PosToAddr(int pos) {
 	uintptr_t a = g_memoryMinAddress + (uintptr_t)(r * (double)(g_memoryMaxAddress - g_memoryMinAddress));
 	return (a / 16) * 16;
 }
+// ============================================================================
+// UTF-8 解码辅助
+// ============================================================================
 
+// 判断一个字节是否是 UTF-8 起始字节，返回该字符的字节长度（1~4），0表示是续接字节
+static int Utf8SeqLen(unsigned char ch) {
+	if ((ch & 0x80) == 0x00) return 1;       // 0xxxxxxx
+	if ((ch & 0xE0) == 0xC0) return 2;       // 110xxxxx
+	if ((ch & 0xF0) == 0xE0) return 3;       // 1110xxxx
+	if ((ch & 0xF8) == 0xF0) return 4;       // 11110xxx
+	return 0; // 10xxxxxx 续接字节或无效
+}
+
+// 解码一个 UTF-8 序列为 Unicode 码点，失败返回 0
+static unsigned DecodeUtf8(const unsigned char* p, int len) {
+	if (len == 1) return p[0];
+	if (len == 2) {
+		if ((p[1] & 0xC0) != 0x80) return 0;
+		unsigned cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
+		return cp >= 0x80 ? cp : 0; // 过长编码无效
+	}
+	if (len == 3) {
+		if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80) return 0;
+		unsigned cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+		if (cp >= 0xD800 && cp <= 0xDFFF) return 0; // 代理对无效
+		return cp >= 0x800 ? cp : 0;
+	}
+	if (len == 4) {
+		if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80 || (p[3] & 0xC0) != 0x80) return 0;
+		unsigned cp = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) |
+			((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+		return (cp >= 0x10000 && cp <= 0x10FFFF) ? cp : 0;
+	}
+	return 0;
+}
+
+// 码点转 wchar_t（UTF-16），返回写入的 wchar_t 数量
+static int CodePointToWchar(unsigned cp, wchar_t* out) {
+	if (cp <= 0xFFFF) {
+		out[0] = (wchar_t)cp;
+		out[1] = 0;
+		return 1;
+	}
+	// 代理对
+	cp -= 0x10000;
+	out[0] = (wchar_t)(0xD800 + (cp >> 10));
+	out[1] = (wchar_t)(0xDC00 + (cp & 0x3FF));
+	out[2] = 0;
+	return 2;
+}
 // ============================================================================
 // 二、内存读写
 // ============================================================================
@@ -109,6 +158,133 @@ RECT GetRectFromAddress(uintptr_t addr, RECT rcPane) {
 // 五、下半区绘制
 // ============================================================================
 void DrawBottomPane(HDC hdc, RECT rcPane) {
+    int w = rcPane.right - rcPane.left;
+    int h = rcPane.bottom - rcPane.top;
+
+    HDC     hMem = CreateCompatibleDC(hdc);
+    HBITMAP hBmp = CreateCompatibleBitmap(hdc, w, h);
+    HBITMAP hOldB = (HBITMAP)SelectObject(hMem, hBmp);
+
+    RECT rcFull = { 0, 0, w, h };
+    FillRect(hMem, &rcFull, (HBRUSH)nt::darkbrush());
+
+    HFONT hOldF = (HFONT)SelectObject(hMem, g_Metric.hFont);
+    SetBkMode(hMem, TRANSPARENT);
+
+    int maxRows = max(1, h / g_Metric.rowHeight);
+    uintptr_t minSel = emin(g_Metric.selectionStart, g_Metric.selectionEnd);
+    uintptr_t maxSel = emax(g_Metric.selectionStart, g_Metric.selectionEnd);
+
+    int hexStartX = g_Metric.addressWidth + 20;
+    int asciiStartX = hexStartX + g_Metric.bytesPerRow * g_Metric.byteSizeNoChar + 50;
+
+    for (int row = 0; row < maxRows; ++row) {
+        int       y = row * g_Metric.rowHeight;
+        uintptr_t rowAddr = g_pageBaseAddress + row * g_Metric.bytesPerRow;
+        unsigned char data[32] = {};
+        bool ok = MockReadProcessMemory(rowAddr, data, g_Metric.bytesPerRow);
+
+        // 地址栏
+        wchar_t szAddr[32];
+        nt::swprintf(szAddr, L"%llX", (long long)rowAddr);
+        SetTextColor(hMem, RGB(255, 255, 255));
+        RECT rcA = { 10, y, g_Metric.addressWidth, y + g_Metric.rowHeight };
+        DrawText(hMem, szAddr, -1, &rcA, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        // ========== Hex 区域绘制 ==========
+        for (int col = 0; col < g_Metric.bytesPerRow; ++col) {
+            uintptr_t curAddr = rowAddr + col;
+            if (g_Metric.isEditing && curAddr == g_Metric.editingAddress) continue;
+
+            unsigned char bv = data[col];
+            int gs = (col / 4) * (g_Metric.charSize / 2);
+            int xH = hexStartX + col * g_Metric.byteSizeNoChar + gs;
+
+            bool sel = g_Metric.hasSelection && curAddr >= minSel && curAddr <= maxSel;
+
+            wchar_t szB[4];
+            nt::swprintf(szB, ok ? L"%02X" : L"??", bv);
+
+            RECT rcH = { xH, y, xH + g_Metric.byteSizeNoChar, y + g_Metric.rowHeight };
+
+            SetTextColor(hMem, sel ? RGB(255, 0, 0) : RGB(0, 0x7F, 0));
+            DrawText(hMem, szB, -1, &rcH, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        }
+
+        // ========== UTF-8 区域绘制 ==========
+        if (ok) {
+            int col = 0;
+            while (col < g_Metric.bytesPerRow) {
+                unsigned char ch = data[col];
+                int seqLen = Utf8SeqLen(ch);
+
+                // 检查序列是否完整在本行内
+                bool valid = false;
+                unsigned cp = 0;
+                wchar_t szC[4] = { L'.', 0, 0, 0 };
+                int displayCols = 1; // 该字符占几列宽度
+
+                if (seqLen >= 1 && seqLen <= 4 && (col + seqLen) <= g_Metric.bytesPerRow) {
+                    cp = DecodeUtf8(&data[col], seqLen);
+                    if (cp > 0 && cp != 0xFFFD) {
+                        valid = true;
+                        displayCols = seqLen;
+                        if (seqLen == 1) {
+                            // 传统 ASCII 可打印判断
+                            szC[0] = (ch >= 32 && ch <= 126) ? (wchar_t)ch : L'.';
+                            szC[1] = 0;
+                        } else {
+                            CodePointToWchar(cp, szC);
+                        }
+                    }
+                }
+
+                if (!valid) {
+                    // 无效字节，显示点
+                    szC[0] = L'.';
+                    szC[1] = 0;
+                    displayCols = 1;
+                }
+
+                // 绘制该字符（可能跨多列）
+                int xA = asciiStartX + col * g_Metric.charSize;
+                int xAEnd = asciiStartX + (col + displayCols) * g_Metric.charSize;
+                RECT rcC = { xA, y, xAEnd, y + g_Metric.rowHeight };
+
+                // 选中高亮（任一字节被选中就高亮整个字符）
+                bool anySel = false;
+                if (g_Metric.hasSelection) {
+                    for (int k = 0; k < displayCols; ++k) {
+                        uintptr_t addr = rowAddr + col + k;
+                        if (addr >= minSel && addr <= maxSel) { anySel = true; break; }
+                    }
+                }
+
+                SetTextColor(hMem, anySel ? RGB(255, 0, 0) :
+                    (valid && displayCols > 1) ? RGB(100, 200, 255) : RGB(80, 255, 80));
+                DrawText(hMem, szC, -1, &rcC, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+                col += displayCols;
+            }
+        } else {
+            // 读取失败，全部显示 ?
+            for (int col = 0; col < g_Metric.bytesPerRow; ++col) {
+                int xA = asciiStartX + col * g_Metric.charSize;
+                RECT rcC = { xA, y, xA + g_Metric.charSize, y + g_Metric.rowHeight };
+                SetTextColor(hMem, RGB(80, 80, 80));
+                DrawText(hMem, L"?", -1, &rcC, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+        }
+    }
+
+    BitBlt(hdc, rcPane.left, rcPane.top, w, h, hMem, 0, 0, SRCCOPY);
+    SelectObject(hMem, hOldF);
+    SelectObject(hMem, hOldB);
+    DeleteDC(hMem);
+    DeleteObject(hBmp);
+}
+
+void DrawBottomPaneASCII(HDC hdc, RECT rcPane) {
 	int w = rcPane.right - rcPane.left;
 	int h = rcPane.bottom - rcPane.top;
 
