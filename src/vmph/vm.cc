@@ -11,7 +11,7 @@ bool vm_init() {
 	// 1. get wmware target process
 	Nt::EnumProc(+[](PSYSTEM_PROCESS_INFORMATION_NS _) {
 		if (_->ImageName.Length > 8 && nt::wcsstr(_->ImageName.Buffer, L"vmx.exe")) { // vmware-vmx.exe
-			nt::pset((unsigned)(size_t)_->UniqueProcessId);
+			nt::pset(_->UniqueProcessId);
 		}
 		return true;
 	});

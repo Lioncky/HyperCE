@@ -23,13 +23,14 @@ struct HexViewMetrics {
 	int      rowHeight;      // 行高
 	int      bytesPerRow;    // 每行字节数
 
-	uintptr_t selectionStart = 0;
-	uintptr_t selectionEnd = 0;
 	bool      hasSelection = false;
-
-	uintptr_t editingAddress = 0;
 	bool      isEditing = false;
 	bool      clickedAscii = false;
+	bool      isUpAera = false;
+
+	uintptr_t selectionStart = 0;
+	uintptr_t selectionEnd = 0;
+	uintptr_t editingAddress = 0;
 
 	HFONT hFont = NULL;
 };

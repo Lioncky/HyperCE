@@ -50,20 +50,6 @@ VOID UI_MainWnd()
 			Nt::ShowWindowU32(hwnd, FALSE);
 		}
 		
-		#if 1 // DARK MODE MENU
-		else if (msg == WM_UAHDRAWMENUITEM) {
-
-			if (!G->bDarkMode)
-				goto _DEF;
-
-			return _ewndi::ON_WM_UAHDRAWMENUITEM((UAHDRAWMENUITEM*)lParam);
-		}
-
-		else if (msg == WM_UAHDRAWMENU) {
-			return _ewndi::ON_WM_UAHDRAWMENU(hwnd, (UAHMENU*)lParam);
-		}
-		#endif
-
 		else if (msg == WM_DROPFILES)
 		{
 			UINT fileCount = Nt::DragQueryFileS32((HANDLE)wParam, 0xFFFFFFFF, nullptr, 0); // 获取拖入文件数量
@@ -90,17 +76,13 @@ VOID UI_MainWnd()
 
 			Nt::GetCursorPosU32(&G->pt);
 
-			HANDLE pid  = (HANDLE)Nt::WndToPid(Nt::PosToWnd(&G->pt));
+			auto pid = (HANDLE)Nt::WndToPid(Nt::PosToWnd(&G->pt));
 			
 			Nt::QueryProcessPath(pid, nt::tmp(), 256);
+			
+			nt::pset(pid);
 
-			if (pid == ntpid())
-				G->hProcessHandle = HPROC;
-			else
-				G->hProcessHandle = Nt::OpenProc(pid, 2035711);
-
-			G->targetId = (UINT)(INT_PTR)pid;
-			nt::lg("PID: %d %X HANDLE:%d %s", pid, pid, G->hProcessHandle, nt::tmp());
+			DDS("PID: %d %X HANDLE:%d %s", pid, pid, G->hProcessHandle, nt::tmp());
 			//DbgPrint("%s mouse released", nt::ltime());
 		}
 		else if (msg == WM_NCLBUTTONDOWN) {
@@ -177,6 +159,16 @@ VOID UI_MainWnd()
 		else if (msg == WM_CREATE) {
 			ui_on_create(hwnd);
 		}
+		
+		#if 1 // DARK MODE MENU
+		else if (G->bDarkMode && msg == WM_UAHDRAWMENUITEM) {
+			return _ewndi::ON_WM_UAHDRAWMENUITEM((UAHDRAWMENUITEM*)lParam);
+		}
+
+		else if (G->bDarkMode && msg == WM_UAHDRAWMENU) {
+			return _ewndi::ON_WM_UAHDRAWMENU(hwnd, (UAHMENU*)lParam);
+		}
+		#endif
 
 		else 
 		_DEF:
@@ -243,15 +235,14 @@ VOID UI_MainInit() {
 		// Set up read memory functions
 		if (!G->ReadProcessMemoryEx) {
 
-			G->hProcessHandle = HPROC;
 			G->ReadProcessMemoryEx = [](LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize) -> INT {
-				return Nt::ReadProc(G->hProcessHandle, (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
+				return Nt::ReadProc(nt::ph(), (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
 			};
 			G->WriteProcessMemoryEx = [](LPCVOID lpBaseAddress, LPVOID lpBuffer, UINT nSize) -> INT {
-				return Nt::ProtectWrite(G->hProcessHandle, (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
+				return Nt::ProtectWrite(nt::ph(), (char*)lpBaseAddress, lpBuffer, (SIZE_T)nSize) ? (INT)nSize : (INT)0;
 			};
 			G->QueryVirtualMemoryEx = [](LPCVOID lpBaseAddress, MEMORY_BASIC_INFORMATION* _) -> INT {
-				return Nt::NtQuery(G->hProcessHandle, (char*)lpBaseAddress, _);
+				return Nt::NtQuery(nt::ph(), (char*)lpBaseAddress, _);
 			};
 		}
 	}

@@ -15,8 +15,8 @@ struct HYPER_CE
 			
 		int dpi;
 		bool bDarkMode, bOption1, bShowConsle, bMainWnd;
-		bool bCovering, bCapting;
-		DWORD targetId; POINT pt;
+		bool bCovering, bCapting, bHexMode;
+		POINT pt;
 		HANDLE exeIcon, cursor, bakcur;
 		HANDLE crHSplit, crVSplit, crSizeAll, crDefault;
 		PVOID lpLowPtr;
@@ -50,14 +50,14 @@ struct HYPER_CE
 		ULONGLONG MemoryKernelDirbase, MemoryKernelEntry;
 		UINT64 TargetVadRoot, TargetPid, TargetCR3;
 	};};
-	BYTE page2[0x1000];
-	WCHAR vw_mem_StateBar[0x180]; CHAR tmps[0x1D00];
-	BYTE unused[0x2000];
-	BYTE unused2[0x2000];
+	union { BYTE ____[0x1000]; struct {
+		WCHAR vw_mem_StateBar[0x180];
+		CHAR tmps[1];
+	};};
 
 	inline PHYPER_WMSR as_wmsr() { *(int*)this = 'WMSR'; return (PHYPER_WMSR)this; }
 	inline PHYPER_VMRD as_vmrd() { *(int*)this = 'VMRD'; return (PHYPER_VMRD)this; }
-}; static_assert(sizeof(HYPER_CE) == 0x8000, "! HYPER_CE");
+}; static_assert(sizeof(HYPER_CE) == 0x2000, "! HYPER_CE");
 
 NX_G HYPER_CE* G; VOID debug_test(); VOID UI_MainWnd(); VOID UI_MainInit();
 #endif // 
