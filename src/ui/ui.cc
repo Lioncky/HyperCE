@@ -47,7 +47,9 @@ VOID UI_MainWnd()
 
 		else if (msg == WM_CLOSE) {
 			G->bMainWnd = FALSE;
-			Nt::ShowWindowU32(hwnd, FALSE);
+			//Nt::ShowWindowU32(hwnd, FALSE);
+			nt::exit();
+			return 0ll;
 		}
 		
 		else if (msg == WM_DROPFILES)

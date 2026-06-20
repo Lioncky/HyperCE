@@ -22,17 +22,36 @@ struct HexViewMetrics {
 	int      addressWidth;   // 左侧地址栏总宽
 	int      rowHeight;      // 行高
 	int      bytesPerRow;    // 每行字节数
+	int      upperHeight;    // 每行字节数
+	uintptr_t memoryMinAddress		,// = 0x0000000000000000;
+	 memoryMaxAddress	,// = 0x00007FFFFFFFFFFF;
+	 pageBaseAddress			,// = 0x100000000;
+	selectionStart,
+	selectionEnd,
+	editingAddress;
 
 	bool      hasSelection = false;
 	bool      isEditing = false;
 	bool      clickedAscii = false;
 	bool      isUpAera = false;
 
-	uintptr_t selectionStart = 0;
-	uintptr_t selectionEnd = 0;
-	uintptr_t editingAddress = 0;
 
+
+	WNDPROC OldEditProc = NULL;
+	HWND   hGhostEdit = NULL;
+	HWND   hHexView = NULL;
 	HFONT hFont = NULL;
+
+	bool draggingSplitter;
+	HWND
+		hHeader,
+		hListView,
+		hStatusBar,
+		hStatusEdit,
+		hStatusBtn;
+
+	WCHAR vw_mem_StateBar[0x180];
+	CHAR tmps[1];
 };
 
 // ── 地址 滚动条位置换算 ─────────────────────────────────────────

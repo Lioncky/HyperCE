@@ -27,13 +27,6 @@ struct HYPER_CE
 		// 
 		// mem_view
 		// 
-		bool draggingSplitter;
-		HWND 
-			hHeader,
-			hListView,
-			hStatusBar,
-			hStatusEdit,
-			hStatusBtn;
 
 		//////////////////////////////////////////////////////////////////////////
 		//																										//
@@ -51,8 +44,6 @@ struct HYPER_CE
 		UINT64 TargetVadRoot, TargetPid, TargetCR3;
 	};};
 	union { BYTE ____[0x1000]; struct {
-		WCHAR vw_mem_StateBar[0x180];
-		CHAR tmps[1];
 	};};
 
 	inline PHYPER_WMSR as_wmsr() { *(int*)this = 'WMSR'; return (PHYPER_WMSR)this; }
