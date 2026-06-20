@@ -56,7 +56,6 @@ struct HYPER_CE
 	BYTE unused[0x2000];
 	BYTE unused2[0x2000];
 
-	inline int get_dpi_mul(int _) { return _ * dpi / 96; }
 	inline PHYPER_WMSR as_wmsr() { *(int*)this = 'WMSR'; return (PHYPER_WMSR)this; }
 	inline PHYPER_VMRD as_vmrd() { *(int*)this = 'VMRD'; return (PHYPER_VMRD)this; }
 }; static_assert(sizeof(HYPER_CE) == 0x8000, "! HYPER_CE");

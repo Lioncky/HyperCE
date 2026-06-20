@@ -178,9 +178,9 @@ void LayoutControls(HWND hwnd) {
 	// Edit 和 Button 在 hStatusBar 客户区内定位（父窗口是 hStatusBar）
 	if (G->hStatusEdit && G->hStatusBtn && G->hStatusBar) {
 		RECT rsb; GetClientRect(G->hStatusBar, &rsb);
-		const int btnW = G->get_dpi_mul(32);
-		const int editW = G->get_dpi_mul(160);
-		const int pad = G->get_dpi_mul(3);
+		const int btnW = nt::cdpi(32);
+		const int editW = nt::cdpi(160);
+		const int pad = nt::cdpi(3);
 		const int ctrlH = rsb.bottom - pad * 2;
 		const int ctrlY = pad;
 
@@ -193,7 +193,7 @@ void LayoutControls(HWND hwnd) {
 	}
 
 	if (g_hBottomScroll) {
-		int sbW = G->get_dpi_mul(18);
+		int sbW = nt::cdpi(18);
 		int sbH = rcBottomPane.bottom - rcBottomPane.top;
 
 		MoveWindow(g_hBottomScroll,
@@ -302,7 +302,7 @@ static void on_wm_create(HWND hwnd) {
 
 	// 字体与度量
 	HDC hdc = GetDC(hwnd);
-	g_Metric.hFont = CreateFont(G->get_dpi_mul(18), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+	g_Metric.hFont = CreateFont(nt::cdpi(18), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
 
@@ -348,10 +348,10 @@ static void on_wm_create(HWND hwnd) {
 	G->hHeader = ListView_GetHeader(G->hListView);
 	Nt::UxSetWindowTheme(G->hHeader, L"ItemsView", NULL);
 
-	HIMAGELIST hIL = ImageList_Create(1, G->get_dpi_mul(22), ILC_COLOR32, 1, 1);
+	HIMAGELIST hIL = ImageList_Create(1, nt::cdpi(22), ILC_COLOR32, 1, 1);
 	ListView_SetImageList(G->hListView, hIL, LVSIL_SMALL);
 
-	HFONT hHdrFont = CreateFont(G->get_dpi_mul(22), 0, 0, 0, FW_BOLD, TRUE, FALSE, FALSE,
+	HFONT hHdrFont = CreateFont(nt::cdpi(22), 0, 0, 0, FW_BOLD, TRUE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
 	SendMessage(G->hHeader, WM_SETFONT, (WPARAM)hHdrFont, TRUE);
@@ -428,7 +428,7 @@ static void on_wm_create(HWND hwnd) {
 // 九、主窗口过程
 // ============================================================================
 int ui_show_mmview(void*) {
-	int w = G->get_dpi_mul(WIN_WIDTH), h = G->get_dpi_mul(WIN_HEIGHT);
+	int w = nt::cdpi(WIN_WIDTH), h = nt::cdpi(WIN_HEIGHT);
 	int x = (GetSystemMetrics(SM_CXSCREEN) - w) / 2;
 	int y = (GetSystemMetrics(SM_CYSCREEN) - h) / 2;
 
@@ -490,7 +490,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 				if (lv->iSubItem == 2) {
 					static HFONT hFontBold;
 					if (!hFontBold)
-						hFontBold = CreateFont(G->get_dpi_mul(18), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+						hFontBold = CreateFont(nt::cdpi(18), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 							DEFAULT_CHARSET, 0, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
 							FIXED_PITCH | FF_MODERN, L"Microsoft YaHei UI");
 					SelectObject(lv->nmcd.hdc, hFontBold);
@@ -789,7 +789,7 @@ LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 			if (sel == 2) {
 				ActivateGhostEdit(hWnd, ++g_Metric.selectionStart, rcBottomPane);
 				::SendMessageW(g_hGhostEdit, WM_KEYDOWN, wParam, lParam);
-				MSG m; ::PeekMessageW(&m, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
+				nt::remove_char_msg(hWnd);
 				return 0;
 			}
 
@@ -800,22 +800,24 @@ LRESULT CALLBACK GhostEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 			if (sel == 0) {
 				if (szText[0] != (wchar_t)wParam) { szText[0] = (wchar_t)wParam; changed = true; }
 				if (changed) ::SetWindowTextW(hWnd, szText);
-				::SendMessageW(g_hGhostEdit, EM_SETSEL, 1, 0);
+				::SendMessageW(g_hGhostEdit, EM_SETSEL, 1, 1);
+				nt::remove_char_msg(hWnd);
 			}
-			else {
+			else if (sel == 1) {
 				if (szText[1] != (wchar_t)wParam) { szText[1] = (wchar_t)wParam; changed = true; }
 				if (changed) ::SetWindowTextW(hWnd, szText);
 				::SendMessage(g_hGhostEdit, EM_SETSEL, -1, 0);
 			}
 
 			if (changed) {
-				unsigned char v = (unsigned char)nt::whcc(szText);
+				auto& v = *szText;
+				v = (unsigned char)nt::whcc(szText);
 				MockWriteProcessMemory(g_Metric.editingAddress, &v, 1);
 			}
 
 			if (sel == 1) {
 				ActivateGhostEdit(hWnd, ++g_Metric.selectionStart, rcBottomPane);
-				MSG m; ::PeekMessageW(&m, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
+				nt::remove_char_msg(hWnd);
 			}
 
 			wParam = 0;

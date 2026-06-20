@@ -6,8 +6,8 @@
 #include <commctrl.h>
 
 // ©¤©¤ ´°¿Ú³ß´ç³£Á¿ ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
-#define WIN_WIDTH        1350
-#define WIN_HEIGHT       1150
+#define WIN_WIDTH        1320
+#define WIN_HEIGHT       960
 #define SPLITTER_HEIGHT  5
 #define SCROLL_MAX_RANGE 10000
 
