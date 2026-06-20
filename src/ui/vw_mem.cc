@@ -58,15 +58,30 @@ uintptr_t GetAddressFromMouse(int mx, int my, uintptr_t pageBase) {
 	int row = my / g_Metric.rowHeight;
 	if (row < 0) return 0;
 
-	int localX = mx - (g_Metric.addressWidth + 20);
+	int hexStartX = g_Metric.addressWidth + 20;
+	int asciiStartX = hexStartX + g_Metric.bytesPerRow * g_Metric.byteSizeNoChar + 50;
+	int asciiEndX = asciiStartX + g_Metric.bytesPerRow * g_Metric.charSize;
+
+	// ASCII Aera
+	if (mx >= asciiStartX && mx < asciiEndX) {
+		int col = (mx - asciiStartX) / g_Metric.charSize;
+		col = emin(emax(col, 0), g_Metric.bytesPerRow - 1);
+		g_Metric.clickedAscii = true;
+		return pageBase + (row * g_Metric.bytesPerRow) + col;
+	}
+
+	// Hex Aera
+	int localX = mx - hexStartX;
 	if (localX < 0) return 0;
+
+	g_Metric.clickedAscii = false;
 
 	int col = 0, curX = 0;
 	for (int c = 0; c < g_Metric.bytesPerRow; ++c) {
 		int nextX = (c + 1) * g_Metric.byteSizeNoChar + (c / 4) * (g_Metric.charSize / 2);
 		if (localX >= curX && localX < nextX) { col = c; break; }
 		curX = nextX;
-		if (c == g_Metric.bytesPerRow - 1) col = 15;
+		if (c == g_Metric.bytesPerRow - 1) col = g_Metric.bytesPerRow - 1;
 	}
 	return pageBase + (row * g_Metric.bytesPerRow) + col;
 }

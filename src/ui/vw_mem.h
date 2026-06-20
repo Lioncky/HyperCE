@@ -29,6 +29,7 @@ struct HexViewMetrics {
 
 	uintptr_t editingAddress = 0;
 	bool      isEditing = false;
+	bool      clickedAscii = false;
 
 	HFONT hFont = NULL;
 };
