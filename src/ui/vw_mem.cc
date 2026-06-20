@@ -30,6 +30,7 @@ uintptr_t PosToAddr(int pos) {
 	uintptr_t a = g_memoryMinAddress + (uintptr_t)(r * (double)(g_memoryMaxAddress - g_memoryMinAddress));
 	return (a / 16) * 16;
 }
+
 // ============================================================================
 // UTF-8 解码辅助
 // ============================================================================
@@ -80,6 +81,7 @@ static int CodePointToWchar(unsigned cp, wchar_t* out) {
 	out[2] = 0;
 	return 2;
 }
+
 // ============================================================================
 // 二、内存读写
 // ============================================================================
@@ -137,7 +139,7 @@ uintptr_t GetAddressFromMouse(int mx, int my, uintptr_t pageBase) {
 
 RECT GetRectFromAddress(uintptr_t addr, RECT rcPane) {
 	RECT rc = {};
-	long long offset = (long long)(addr - g_pageBaseAddress);
+	auto offset = (long long)(addr - g_pageBaseAddress);
 	if (offset < 0) return rc;
 
 	int maxBytes = ((rcPane.bottom - rcPane.top) / g_Metric.rowHeight) * g_Metric.bytesPerRow;
@@ -523,7 +525,7 @@ static void on_wm_create(HWND hwnd) {
 	g_hBottomScroll = ::CreateWindowEx(0, L"SCROLLBAR", NULL,
 		WS_CHILD | WS_VISIBLE | SBS_VERT,
 		0, 0, 0, 0, hwnd, (HMENU)1003, NtCurrentImageBase(), NULL);
-	Nt::UxSetWindowTheme(g_hBottomScroll, L"Explorer", NULL);
+	//Nt::UxSetWindowTheme(g_hBottomScroll, L"Explorer", NULL);
 
 	SCROLLINFO si = { sizeof(si), SIF_RANGE | SIF_PAGE | SIF_POS,
 		0, SCROLL_MAX_RANGE, 300, AddrToPos(g_pageBaseAddress) };
@@ -537,7 +539,7 @@ static void on_wm_create(HWND hwnd) {
 
 	Nt::UxSetWindowTheme(G->hListView, L"DarkMode_Explorer", NULL);
 	G->hHeader = ListView_GetHeader(G->hListView);
-	Nt::UxSetWindowTheme(G->hHeader, L"ItemsView", NULL);
+	//Nt::UxSetWindowTheme(G->hHeader, L"ItemsView", NULL);
 
 	HIMAGELIST hIL = ImageList_Create(1, nt::cdpi(22), ILC_COLOR32, 1, 1);
 	ListView_SetImageList(G->hListView, hIL, LVSIL_SMALL);

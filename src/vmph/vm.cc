@@ -11,17 +11,17 @@ bool vm_init() {
 	// 1. get wmware target process
 	Nt::EnumProc(+[](PSYSTEM_PROCESS_INFORMATION_NS _) {
 		if (_->ImageName.Length > 8 && nt::wcsstr(_->ImageName.Buffer, L"vmx.exe")) { // vmware-vmx.exe
-			G->hPid = _->UniqueProcessId;
+			nt::pset((unsigned)(size_t)_->UniqueProcessId);
 		}
 		return true;
 	});
 
-	// 2. open target process
-	if (!(G->hProc = nt::OpenProc(G->hPid, 2035711)))
+	// 2. check process handle
+	if (!nt::ph())
 		return false;
 
 	// 3. enum handles and remap session
-	Nt::EnumHandlesName(G->hProc, G->hPid, +[](PWSTR _, SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX* i) {
+	Nt::EnumHandlesName(nt::ph(), nt::pidh(), +[](PWSTR _, SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX* i) {
 
 		if (nt::wcsstr(_, L".vmem")) {
 

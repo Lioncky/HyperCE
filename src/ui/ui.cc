@@ -1,10 +1,8 @@
 ﻿#include "hyperce.h"
 #include <Windows.h>
 #include <CommCtrl.h>
-//#include <ShellScalingApi.h>
 VOID ui_ShowTrayMenu(HWND);
 
-#include <vsstyle.h>
 
 HMENU CreateAppMenu();
 void ui_on_create(HWND hWnd)
@@ -12,7 +10,7 @@ void ui_on_create(HWND hWnd)
 	DAS("!ui_on_create");
 
 	// init dark mode theme data for menu
-	nt::darkmenu_theme() = Nt::UxOpenThemeData(hWnd, L"Menu");
+	//nt::darkmenu_theme() = Nt::UxOpenThemeData(hWnd, L"Menu");
 
 	// set current system menu
 	::SetMenu(hWnd, CreateAppMenu());
@@ -58,29 +56,11 @@ VOID UI_MainWnd()
 			if (!G->bDarkMode)
 				goto _DEF;
 
-			extern long long ON_WM_UAHDRAWMENUITEM(UAHDRAWMENUITEM*);
-			return ON_WM_UAHDRAWMENUITEM((UAHDRAWMENUITEM*)lParam);
+			return _ewndi::ON_WM_UAHDRAWMENUITEM((UAHDRAWMENUITEM*)lParam);
 		}
 
 		else if (msg == WM_UAHDRAWMENU) {
-			if (!G->bDarkMode)
-				goto _DEF;
-
-			RECT rcMenu, rcWindow;
-			auto* drawingInfo = (UAHMENU*)lParam;
-			MENUBARINFO menuBarInfo{ sizeof(menuBarInfo) };
-			if (!GetMenuBarInfo(hwnd, OBJID_MENU, 0, &menuBarInfo))
-				return 0ll;
-
-			if (!GetWindowRect(hwnd, &rcWindow))
-				return 0ll;
-
-			rcMenu = menuBarInfo.rcBar;
-			if (!OffsetRect(&rcMenu, -rcWindow.left, -rcWindow.top))
-				return 0ll;
-
-			FillRect(drawingInfo->hdc, &rcMenu, (HBRUSH)nt::darkbrush());
-			return 1ll;
+			return _ewndi::ON_WM_UAHDRAWMENU(hwnd, (UAHMENU*)lParam);
 		}
 		#endif
 
@@ -312,81 +292,3 @@ HMENU CreateAppMenu()
 
 	return hMenuBar;
 }
-
-long long ON_WM_UAHDRAWMENUITEM(UAHDRAWMENUITEM* drawingInfo) {
-
-
-	//Get the menu item string
-	wchar_t menuString[256]{};
-	MENUITEMINFO itemInfo{ sizeof(itemInfo), MIIM_STRING };
-	itemInfo.dwTypeData = menuString;
-	itemInfo.cch = (sizeof(menuString) / sizeof(wchar_t)) - 1;
-	
-	if (!Nt::GetMenuItemInfoU32(drawingInfo->um.hMenu, drawingInfo->umi.iPosition, TRUE, &itemInfo))
-		return 0ll;
-	menuString[255] = L'\0';
-
-	//Get the item state for drawing
-	DWORD dwFlags = DT_CENTER | DT_SINGLELINE | DT_VCENTER;
-	int iTextStateID = 0;
-
-	if ((drawingInfo->dis.itemState & ODS_INACTIVE) || (drawingInfo->dis.itemState & ODS_DEFAULT))
-		iTextStateID = MBI_NORMAL;
-	else if (drawingInfo->dis.itemState & ODS_HOTLIGHT)
-		iTextStateID = MBI_HOT;
-	else if (drawingInfo->dis.itemState & ODS_SELECTED)
-		iTextStateID = MBI_PUSHED;
-	else if ((drawingInfo->dis.itemState & ODS_GRAYED) || (drawingInfo->dis.itemState & ODS_DISABLED))
-		iTextStateID = MBI_DISABLED;
-
-	//if (GetForegroundWindow() != hwnd)
-	//	iTextStateID = MBI_DISABLED;
-
-	constexpr COLORREF DARK_MENU_ITEM_FOREGROUND = 0xFFFFFF;
-	constexpr COLORREF DARK_MENU_ITEM_FOREGROUND_DISABLED = 0xAAAAAA;
-
-	const HBRUSH* hBrBackground = (HBRUSH*)&nt::l->DrakBrush;
-	if (drawingInfo->dis.itemState & ODS_HOTLIGHT)
-		hBrBackground = (HBRUSH*)&nt::l->DrakHoverBrush;
-	else if (drawingInfo->dis.itemState & ODS_SELECTED)
-		hBrBackground = (HBRUSH*)&nt::l->DrakSelectBrush;
-
-	if (drawingInfo->dis.itemState & ODS_NOACCEL)
-		dwFlags |= DT_HIDEPREFIX;
-
-
-	constexpr int _DTT_TEXTCOLOR = (1UL << 0);
-	const DTTOPTS_NS textOptions{ sizeof(textOptions), _DTT_TEXTCOLOR, iTextStateID != MBI_DISABLED ? DARK_MENU_ITEM_FOREGROUND : DARK_MENU_ITEM_FOREGROUND_DISABLED };
-	Nt::FillRectU32(drawingInfo->um.hdc, &drawingInfo->dis.rcItem, *hBrBackground);
-
-	// isMdiCaptionButton
-	if (*menuString == L'\0')
-	{
-		int offset = Nt::GetMenuItemCountU32(drawingInfo->um.hMenu) - drawingInfo->umi.iPosition;
-
-		wchar_t glyph;
-		if (drawingInfo->umi.iPosition == 0)
-			glyph = L'\ue700'; //Menu icon
-		else if (offset == 3)
-			glyph = L'\ue921'; //Minimize icon
-		else if (offset == 2)
-			glyph = L'\ue923'; //Maximize icon
-		else if (offset == 1)
-			glyph = L'\ue8bb'; //Close icon
-		else
-			return 0ll;
-
-		HRESULT hResult = Nt::UxDrawThemeTextEx(nt::darkmenu_theme(), drawingInfo->um.hdc, MENU_BARITEM, MBI_NORMAL, &glyph, 1, dwFlags, &drawingInfo->dis.rcItem, &textOptions);
-		if (FAILED(hResult))
-			return  0ll;
-
-		return 1ll;
-	}
-
-	HRESULT hResult = Nt::UxDrawThemeTextEx(nt::darkmenu_theme(), drawingInfo->um.hdc, MENU_BARITEM, MBI_NORMAL, menuString, itemInfo.cch, dwFlags, &drawingInfo->dis.rcItem, &textOptions);
-	if (FAILED(hResult))
-		return  0ll;
-
-	return 1ll;
-}
-			
