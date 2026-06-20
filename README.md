@@ -1,5 +1,5 @@
 ## HyperCE 
-> ~~This Project is based on [HyperDbg](https://github.com/HyperDbg/HyperDbg)(VT-x)~~maybe in the future
+> ~~This Project is based on [HyperDbg](https://github.com/HyperDbg/HyperDbg)(VT-x)~~ maybe in the future
 > 
 
 ## Build
@@ -25,4 +25,5 @@
 - [ ] 11. Debug Single Step 
 - [ ] 12. EPT TABLE HIDE
 - [ ] 13. ANDROID SUPPORT
-- [ ] 
+- [x] 14. Process List With Nt 
+- [x] 15. Module List With Nt 
