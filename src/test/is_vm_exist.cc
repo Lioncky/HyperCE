@@ -55,9 +55,9 @@ bool is_vm_exist()
 	}
 	__except (1) {
 		vm_exist = 0;
-		ew::lg("vm-__except");
+		nt::lg("vm-__except");
 	}
-	ew::lg("vm:%d %lld", vm_exist, ll ); 
+	nt::lg("vm:%d %lld", vm_exist, ll ); 
 
 	//// CPUID timing probe
 	//int cpuInfo[4];
